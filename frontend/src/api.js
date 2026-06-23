@@ -26,14 +26,22 @@ export function setUnauthorizedHandler(handler) {
 }
 
 async function request(path, { method = 'GET', body } = {}) {
-  const headers = { 'Content-Type': 'application/json' }
+  const headers = {}
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
+
+  let requestBody
+  if (body instanceof FormData) {
+    requestBody = body
+  } else if (body !== undefined) {
+    headers['Content-Type'] = 'application/json'
+    requestBody = JSON.stringify(body)
+  }
 
   const response = await fetch(path, {
     method,
     headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: requestBody,
   })
 
   if (response.status === 401) {
@@ -70,6 +78,11 @@ export const api = {
   getSection: (id) => request(`/sections/${id}`),
   addDocument: (sectionId, title, content) =>
     request(`/sections/${sectionId}/documents`, { method: 'POST', body: { title, content } }),
+  uploadDocument: (sectionId, file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return request(`/sections/${sectionId}/documents/upload`, { method: 'POST', body: formData })
+  },
   updateDocument: (id, title, content) =>
     request(`/documents/${id}`, { method: 'PUT', body: { title, content } }),
   deleteDocument: (id) => request(`/documents/${id}`, { method: 'DELETE' }),

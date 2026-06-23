@@ -104,6 +104,83 @@ def test_oversized_document_content_returns_422(client, make_user):
     assert response.status_code == 422
 
 
+def test_upload_txt_file_creates_document_with_title_from_filename(client, make_user):
+    headers = make_user("upload@example.com")
+    section = client.post("/sections", json={"name": "Imports"}, headers=headers).json()
+
+    response = client.post(
+        f"/sections/{section['id']}/documents/upload",
+        files={"file": ("my-notes.txt", b"Some imported notes", "text/plain")},
+        headers=headers,
+    )
+    assert response.status_code == 201
+    assert response.json()["title"] == "my-notes"
+    assert response.json()["content"] == "Some imported notes"
+
+
+def test_upload_md_file_is_accepted(client, make_user):
+    headers = make_user("upload-md@example.com")
+    section = client.post("/sections", json={"name": "Imports"}, headers=headers).json()
+
+    response = client.post(
+        f"/sections/{section['id']}/documents/upload",
+        files={"file": ("readme.md", b"# Heading\nBody text", "text/markdown")},
+        headers=headers,
+    )
+    assert response.status_code == 201
+    assert response.json()["title"] == "readme"
+
+
+def test_upload_rejects_unsupported_extension(client, make_user):
+    headers = make_user("upload-bad-ext@example.com")
+    section = client.post("/sections", json={"name": "Imports"}, headers=headers).json()
+
+    response = client.post(
+        f"/sections/{section['id']}/documents/upload",
+        files={"file": ("notes.pdf", b"binary-ish content", "application/pdf")},
+        headers=headers,
+    )
+    assert response.status_code == 422
+
+
+def test_upload_rejects_non_utf8_file(client, make_user):
+    headers = make_user("upload-bad-encoding@example.com")
+    section = client.post("/sections", json={"name": "Imports"}, headers=headers).json()
+
+    response = client.post(
+        f"/sections/{section['id']}/documents/upload",
+        files={"file": ("notes.txt", b"\xff\xfe\x00\x01", "text/plain")},
+        headers=headers,
+    )
+    assert response.status_code == 422
+
+
+def test_upload_rejects_oversized_file(client, make_user):
+    headers = make_user("upload-oversized@example.com")
+    section = client.post("/sections", json={"name": "Imports"}, headers=headers).json()
+
+    oversized = b"x" * (settings.max_document_content_length + 1)
+    response = client.post(
+        f"/sections/{section['id']}/documents/upload",
+        files={"file": ("notes.txt", oversized, "text/plain")},
+        headers=headers,
+    )
+    assert response.status_code == 422
+
+
+def test_user_b_cannot_upload_to_user_a_section(client, make_user):
+    headers_a = make_user("upload-a@example.com")
+    headers_b = make_user("upload-b@example.com")
+    section = client.post("/sections", json={"name": "Secret"}, headers=headers_a).json()
+
+    response = client.post(
+        f"/sections/{section['id']}/documents/upload",
+        files={"file": ("notes.txt", b"sneaky", "text/plain")},
+        headers=headers_b,
+    )
+    assert response.status_code in (403, 404)
+
+
 def test_max_sections_per_user_returns_422(client, make_user, monkeypatch):
     monkeypatch.setattr(settings, "max_sections_per_user", 1)
     headers = make_user("limit@example.com")

@@ -81,6 +81,20 @@ export default function SectionsScreen() {
     setDocContent(doc.content)
   }
 
+  async function handleUploadFile(e) {
+    const file = e.target.files?.[0]
+    if (!file || !selectedSection) return
+    setError(null)
+    try {
+      await api.uploadDocument(selectedSection.id, file)
+      await openSection(selectedSection.id)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      e.target.value = ''
+    }
+  }
+
   async function handleDeleteDocument(id) {
     setError(null)
     try {
@@ -165,6 +179,11 @@ export default function SectionsScreen() {
               </button>
             )}
           </form>
+
+          <label className="document-upload">
+            Or import a .md/.txt file:
+            <input type="file" accept=".md,.txt" onChange={handleUploadFile} />
+          </label>
         </section>
       )}
     </div>

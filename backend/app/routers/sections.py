@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -16,6 +19,8 @@ from app.schemas import (
 )
 
 router = APIRouter(tags=["sections"])
+
+ALLOWED_UPLOAD_EXTENSIONS = (".md", ".txt")
 
 
 def _get_owned_section(db: Session, section_id: int, user_id: int) -> Section:
@@ -71,6 +76,14 @@ def get_section(
     return _get_owned_section(db, section_id, current_user.id)
 
 
+def _create_document(db: Session, section: Section, payload: DocumentCreate) -> Document:
+    document = Document(section_id=section.id, title=payload.title, content=payload.content)
+    db.add(document)
+    db.commit()
+    db.refresh(document)
+    return document
+
+
 @router.post(
     "/sections/{section_id}/documents",
     response_model=DocumentRead,
@@ -83,11 +96,47 @@ def add_document(
     current_user: User = Depends(get_current_user),
 ) -> Document:
     section = _get_owned_section(db, section_id, current_user.id)
-    document = Document(section_id=section.id, title=payload.title, content=payload.content)
-    db.add(document)
-    db.commit()
-    db.refresh(document)
-    return document
+    return _create_document(db, section, payload)
+
+
+@router.post(
+    "/sections/{section_id}/documents/upload",
+    response_model=DocumentRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_document(
+    section_id: int,
+    file: UploadFile,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Document:
+    section = _get_owned_section(db, section_id, current_user.id)
+
+    filename = file.filename or ""
+    if not filename.lower().endswith(ALLOWED_UPLOAD_EXTENSIONS):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Only {', '.join(ALLOWED_UPLOAD_EXTENSIONS)} files are supported",
+        )
+
+    raw = await file.read()
+    try:
+        content = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="File must be UTF-8 encoded text",
+        ) from exc
+
+    title = Path(filename).stem or filename
+    try:
+        payload = DocumentCreate(title=title[:255], content=content)
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
+
+    return _create_document(db, section, payload)
 
 
 @router.put("/documents/{document_id}", response_model=DocumentRead)
