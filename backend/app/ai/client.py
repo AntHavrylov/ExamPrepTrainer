@@ -28,7 +28,7 @@ class OpenRouterClient:
         self.backoff_base = backoff_base
         self.transport = transport
 
-    async def complete(self, messages: list[dict[str, str]]) -> str:
+    async def complete(self, messages: list[dict[str, str]], temperature: float | None = None) -> str:
         if not self.api_key:
             raise AIClientError("OpenRouter API key is not configured")
 
@@ -36,7 +36,9 @@ class OpenRouterClient:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
-        payload = {"model": self.model, "messages": messages}
+        payload: dict = {"model": self.model, "messages": messages}
+        if temperature is not None:
+            payload["temperature"] = temperature
 
         async with httpx.AsyncClient(timeout=self.timeout, transport=self.transport) as http_client:
             for attempt in range(self.max_retries + 1):

@@ -75,3 +75,16 @@ class GenerateQuestionsRequest(BaseModel):
 class QuestionRead(BaseModel):
     question: str
     category: str
+
+
+class EvaluateAnswerRequest(BaseModel):
+    question: str = Field(min_length=1)
+    answer: str = Field(min_length=1)
+    section_ids: list[int] = Field(default_factory=list)
+
+
+class EvaluationRead(BaseModel):
+    score: int
+    feedback: str
+    strengths: list[str]
+    gaps: list[str]

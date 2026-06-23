@@ -228,18 +228,18 @@ text**. First-class feature, not just seeding.
 **Goal:** AI scores the user's answer and gives feedback.
 
 ### Subtasks
-- [ ] `ai/evaluate.py`: `evaluate_answer(question, answer, context)`
-  - [ ] Returns **strict JSON**: `{score: 0-10, feedback, strengths[], gaps[]}`
-  - [ ] Use low temperature (0 or near-0) for more consistent scoring
-- [ ] Criteria in prompt tied to question type (technical -> accuracy/depth;
+- [x] `ai/evaluate.py`: `evaluate_answer(question, answer, context)`
+  - [x] Returns **strict JSON**: `{score: 0-10, feedback, strengths[], gaps[]}`
+  - [x] Use low temperature (0 or near-0) for more consistent scoring
+- [x] Criteria in prompt tied to question type (technical -> accuracy/depth;
       behavioral -> STAR structure)
-- [ ] `POST /ai/evaluate` (protected): `question`, `answer`, `section_ids[]`
-- [ ] Clamp/validate score to 0–10; handle non-numeric model output
+- [x] `POST /ai/evaluate` (protected): `question`, `answer`, `section_ids[]`
+- [x] Clamp/validate score to 0–10; handle non-numeric model output
 
 ### Tests
-- [ ] Mocked weak answer -> low score + non-empty `gaps`
-- [ ] Mocked strong answer -> high score + non-empty `strengths`
-- [ ] Score always coerced into 0–10 integer
+- [x] Mocked weak answer -> low score + non-empty `gaps`
+- [x] Mocked strong answer -> high score + non-empty `strengths`
+- [x] Score always coerced into 0–10 integer
 
 ### Definition of Done
 - Manual check: weak vs strong answers get sensibly different scores
@@ -339,7 +339,7 @@ text**. First-class feature, not just seeding.
 - [x] Phase 3 — Knowledge base + plain-text editing (user-scoped)
 - [x] Phase 4 — OpenRouter connection (mockable)
 - [x] Phase 5 — Question generation
-- [ ] Phase 6 — Answer evaluation
+- [x] Phase 6 — Answer evaluation
 - [ ] Phase 7 — Sessions + persistence (user-scoped)
 - [ ] Phase 8 — React frontend with login
 - [ ] Phase 9 — Polish

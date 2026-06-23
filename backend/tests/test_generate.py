@@ -1,7 +1,7 @@
 import json
 
 from app.ai.client import get_ai_client
-from app.ai.generate import _build_context
+from app.ai.context import build_context
 from app.config import settings
 from app.main import app
 from app.models import Document, Section
@@ -169,6 +169,6 @@ def test_build_context_respects_char_budget():
     section = Section(id=1, user_id=1, name="Long Section")
     section.documents = [Document(id=1, section_id=1, title="Doc", content="x" * 1000)]
 
-    context = _build_context([section], char_budget=50)
+    context = build_context([section], char_budget=50)
 
     assert len(context) <= 50
