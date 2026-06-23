@@ -6,6 +6,7 @@ import SectionsScreen from './screens/SectionsScreen'
 import StartTrainingScreen from './screens/StartTrainingScreen'
 import TrainingScreen from './screens/TrainingScreen'
 import SummaryScreen from './screens/SummaryScreen'
+import ProgressScreen from './screens/ProgressScreen'
 
 function AppShell() {
   const { token, user, authLoading, logout } = useAuth()
@@ -49,6 +50,9 @@ function AppShell() {
         <button onClick={() => setView('start-training')} disabled={view === 'start-training'}>
           Train
         </button>
+        <button onClick={() => setView('progress')} disabled={view === 'progress'}>
+          Progress
+        </button>
       </nav>
 
       <main>
@@ -60,6 +64,7 @@ function AppShell() {
         {view === 'summary' && sessionId && (
           <SummaryScreen sessionId={sessionId} onDone={goToSections} />
         )}
+        {view === 'progress' && <ProgressScreen />}
       </main>
     </div>
   )

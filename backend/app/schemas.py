@@ -152,3 +152,23 @@ class AttemptSummaryRead(BaseModel):
 class SessionSummaryRead(SessionRead):
     attempts: list[AttemptSummaryRead] = []
     average_score: float | None = None
+
+
+class ScorePoint(BaseModel):
+    attempt_id: int
+    created_at: datetime
+    score: int
+
+
+class TopicStat(BaseModel):
+    section_id: int
+    section_name: str
+    average_score: float
+    attempt_count: int
+
+
+class StatsRead(BaseModel):
+    total_attempts: int
+    average_score: float | None
+    score_history: list[ScorePoint]
+    weakest_topics: list[TopicStat]

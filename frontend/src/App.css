@@ -107,3 +107,34 @@ fieldset {
 textarea {
   resize: vertical;
 }
+
+.score-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 120px;
+  border: 1px solid #eee;
+  border-radius: 6px;
+  padding: 8px;
+  margin-bottom: 16px;
+}
+
+.score-bar {
+  flex: 1;
+  min-width: 6px;
+  background: #3b6ddb;
+  border-radius: 2px 2px 0 0;
+}
+
+.topic-list {
+  list-style: none;
+  padding: 0;
+  text-align: left;
+}
+
+.topic-list li {
+  border: 1px solid #eee;
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 8px;
+}

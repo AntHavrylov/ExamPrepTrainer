@@ -343,7 +343,7 @@ only exists once Sessions/Attempts are persisted.
 ## Phase 9 — Polish (iterative, one at a time)
 
 - [ ] Streaming responses (tokens appear progressively)
-- [ ] Progress stats: score chart, "weakest topics"
+- [x] Progress stats: score chart, "weakest topics"
 - [x] Knowledge-base import: upload `.md`/`.txt` into a section
 - [x] Refresh tokens (longer sessions without re-login)
 - [x] Per-user rate limiting on AI endpoints (cost/abuse control)

@@ -168,4 +168,5 @@ export const api = {
     request(`/sessions/${sessionId}/answer`, { method: 'POST', body: payload }),
   getSession: (sessionId) => request(`/sessions/${sessionId}`),
   listSessions: () => request('/sessions'),
+  getStats: () => request('/sessions/stats'),
 }

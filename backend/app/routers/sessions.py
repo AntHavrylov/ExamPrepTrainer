@@ -9,7 +9,7 @@ from app.ai.generate import generate_questions, generate_quiz_questions
 from app.auth.deps import get_current_user
 from app.config import settings
 from app.db import get_db
-from app.models import Attempt, User
+from app.models import Attempt, Section, User
 from app.models import Session as TrainingSession
 from app.rate_limit import check_ai_rate_limit, enforce_ai_rate_limit
 from app.schemas import (
@@ -17,9 +17,12 @@ from app.schemas import (
     AnswerResultRead,
     AttemptSummaryRead,
     NextQuestionRead,
+    ScorePoint,
     SessionRead,
     SessionSummaryRead,
     StartSessionRequest,
+    StatsRead,
+    TopicStat,
 )
 from app.section_access import get_owned_sections
 
@@ -225,6 +228,65 @@ async def answer(
         strengths=evaluation["strengths"],
         gaps=evaluation["gaps"],
         feedback=evaluation["feedback"],
+    )
+
+
+@router.get("/stats", response_model=StatsRead)
+def get_stats(
+    db: DBSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> StatsRead:
+    sessions = list(
+        db.scalars(select(TrainingSession).where(TrainingSession.user_id == current_user.id))
+    )
+    if not sessions:
+        return StatsRead(total_attempts=0, average_score=None, score_history=[], weakest_topics=[])
+
+    session_by_id = {session.id: session for session in sessions}
+    attempts = list(
+        db.scalars(
+            select(Attempt)
+            .where(Attempt.session_id.in_(session_by_id.keys()), Attempt.score.isnot(None))
+            .order_by(Attempt.created_at)
+        )
+    )
+    if not attempts:
+        return StatsRead(total_attempts=0, average_score=None, score_history=[], weakest_topics=[])
+
+    score_history = [
+        ScorePoint(attempt_id=a.id, created_at=a.created_at, score=a.score) for a in attempts
+    ]
+    average_score = sum(a.score for a in attempts) / len(attempts)
+
+    topic_scores: dict[int, list[int]] = {}
+    for attempt in attempts:
+        for section_id in session_by_id[attempt.session_id].section_ids:
+            topic_scores.setdefault(section_id, []).append(attempt.score)
+
+    section_ids = list(topic_scores.keys())
+    section_names = {
+        section.id: section.name
+        for section in db.scalars(select(Section).where(Section.id.in_(section_ids)))
+    }
+
+    weakest_topics = sorted(
+        (
+            TopicStat(
+                section_id=section_id,
+                section_name=section_names[section_id],
+                average_score=sum(scores) / len(scores),
+                attempt_count=len(scores),
+            )
+            for section_id, scores in topic_scores.items()
+        ),
+        key=lambda topic: topic.average_score,
+    )[:5]
+
+    return StatsRead(
+        total_attempts=len(attempts),
+        average_score=average_score,
+        score_history=score_history,
+        weakest_topics=weakest_topics,
     )
 
 
