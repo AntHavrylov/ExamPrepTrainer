@@ -99,6 +99,7 @@ class StartSessionRequest(BaseModel):
     section_ids: list[int] = Field(min_length=1)
     mode: Literal["technical", "behavioral", "mixed"] = "mixed"
     format: Literal["open_ended", "quiz"] = "open_ended"
+    difficulty: Literal["easy", "medium", "hard"] = "medium"
 
 
 class SessionRead(BaseModel):
@@ -107,6 +108,7 @@ class SessionRead(BaseModel):
     id: int
     mode: str
     format: str
+    difficulty: str
     section_ids: list[int]
     started_at: datetime
     finished_at: datetime | None
@@ -117,6 +119,7 @@ class NextQuestionRead(BaseModel):
     question: str
     category: str
     options: list[str] | None = None
+    hint: str
 
 
 class AnswerRequest(BaseModel):
@@ -133,6 +136,7 @@ class AnswerResultRead(BaseModel):
     gaps: list[str] = []
     correct_index: int | None = None
     is_correct: bool | None = None
+    explanation: str | None = None
 
 
 class AttemptSummaryRead(BaseModel):
@@ -147,6 +151,8 @@ class AttemptSummaryRead(BaseModel):
     score: int | None = None
     feedback: str | None = None
     created_at: datetime
+    hint: str | None = None
+    explanation: str | None = None
 
 
 class SessionSummaryRead(SessionRead):

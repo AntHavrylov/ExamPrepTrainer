@@ -181,6 +181,39 @@ def test_user_b_cannot_upload_to_user_a_section(client, make_user):
     assert response.status_code in (403, 404)
 
 
+def test_user_can_delete_section_and_its_documents(client, make_user):
+    headers = make_user("delete-section@example.com")
+
+    section = client.post("/sections", json={"name": "Temp"}, headers=headers).json()
+    client.post(
+        f"/sections/{section['id']}/documents",
+        json={"title": "Notes", "content": "Some notes"},
+        headers=headers,
+    )
+
+    deleted = client.delete(f"/sections/{section['id']}", headers=headers)
+    assert deleted.status_code == 204
+
+    fetched_after = client.get(f"/sections/{section['id']}", headers=headers)
+    assert fetched_after.status_code == 404
+
+    listed = client.get("/sections", headers=headers)
+    assert listed.json() == []
+
+
+def test_user_b_cannot_delete_user_a_section(client, make_user):
+    headers_a = make_user("delete-a@example.com")
+    headers_b = make_user("delete-b@example.com")
+
+    section = client.post("/sections", json={"name": "Secret"}, headers=headers_a).json()
+
+    response = client.delete(f"/sections/{section['id']}", headers=headers_b)
+    assert response.status_code in (403, 404)
+
+    still_there = client.get(f"/sections/{section['id']}", headers=headers_a)
+    assert still_there.status_code == 200
+
+
 def test_max_sections_per_user_returns_422(client, make_user, monkeypatch):
     monkeypatch.setattr(settings, "max_sections_per_user", 1)
     headers = make_user("limit@example.com")

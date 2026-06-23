@@ -99,6 +99,28 @@ def test_stats_weakest_topics_capped_at_five(client, make_user, db_session):
     assert weakest_topics[0]["section_name"] == "Topic 0"
 
 
+def test_stats_skip_weakest_topic_for_deleted_section(client, make_user, db_session):
+    headers = make_user("stats-deleted-section@example.com")
+    user_id = _user_id(client, headers)
+
+    python_section = client.post("/sections", json={"name": "Python"}, headers=headers).json()
+    _make_session_with_attempts(
+        db_session,
+        user_id,
+        [python_section["id"]],
+        [(4, datetime(2024, 1, 1, tzinfo=timezone.utc))],
+    )
+
+    deleted = client.delete(f"/sections/{python_section['id']}", headers=headers)
+    assert deleted.status_code == 204
+
+    response = client.get("/sessions/stats", headers=headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total_attempts"] == 1
+    assert body["weakest_topics"] == []
+
+
 def test_stats_are_isolated_per_user(client, make_user, db_session):
     headers_a = make_user("stats-a@example.com")
     headers_b = make_user("stats-b@example.com")

@@ -70,11 +70,8 @@ body {
 }
 
 #root {
-  max-width: 760px;
-  margin: 0 auto;
   min-height: 100vh;
   box-sizing: border-box;
-  padding: var(--space-5) var(--space-4);
 }
 
 h1 {

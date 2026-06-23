@@ -3,7 +3,17 @@ import json
 from app.ai.client import get_ai_client
 from app.main import app
 
-OPEN_ENDED_QUESTION_JSON = json.dumps([{"question": "What is the GIL?", "category": "technical"}])
+OPEN_ENDED_QUESTION_JSON = json.dumps(
+    [
+        {
+            "question": "What is the GIL?",
+            "category": "technical",
+            "theme": "python gil",
+            "hint": "Think about thread safety.",
+            "explanation": "The GIL serializes bytecode execution across threads.",
+        }
+    ]
+)
 QUIZ_QUESTION_JSON = json.dumps(
     [
         {
@@ -11,6 +21,9 @@ QUIZ_QUESTION_JSON = json.dumps(
             "category": "technical",
             "options": ["def", "async def", "coroutine", "await"],
             "correct_index": 1,
+            "theme": "python coroutines",
+            "hint": "It's two words.",
+            "explanation": "`async def` declares a coroutine function.",
         }
     ]
 )

@@ -76,6 +76,17 @@ def get_section(
     return _get_owned_section(db, section_id, current_user.id)
 
 
+@router.delete("/sections/{section_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_section(
+    section_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    section = _get_owned_section(db, section_id, current_user.id)
+    db.delete(section)
+    db.commit()
+
+
 def _create_document(db: Session, section: Section, payload: DocumentCreate) -> Document:
     document = Document(section_id=section.id, title=payload.title, content=payload.content)
     db.add(document)

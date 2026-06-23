@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -12,7 +13,7 @@ from app.ai.generate import generate_questions, generate_quiz_questions
 from app.auth.deps import get_current_user
 from app.config import settings
 from app.db import get_db, get_session_factory
-from app.models import Attempt, Section, User
+from app.models import Attempt, QuestionBank, Section, User
 from app.models import Session as TrainingSession
 from app.rate_limit import check_ai_rate_limit, enforce_ai_rate_limit
 from app.schemas import (
@@ -45,6 +46,24 @@ def _latest_attempt(db: DBSession, session_id: int) -> Attempt | None:
     )
 
 
+def _scope_key(section_ids: list[int]) -> list[int]:
+    return sorted(set(section_ids))
+
+
+def _matching_bank_rows(
+    db: DBSession, user_id: int, mode: str, format_: str, difficulty: str, scope: list[int]
+) -> list[QuestionBank]:
+    candidates = db.scalars(
+        select(QuestionBank).where(
+            QuestionBank.user_id == user_id,
+            QuestionBank.mode == mode,
+            QuestionBank.format == format_,
+            QuestionBank.difficulty == difficulty,
+        )
+    )
+    return [row for row in candidates if _scope_key(row.section_ids) == scope]
+
+
 def _attempt_to_result(
     attempt: Attempt,
     strengths: list[str] | None = None,
@@ -59,6 +78,7 @@ def _attempt_to_result(
             feedback=attempt.feedback,
             correct_index=attempt.correct_index,
             is_correct=attempt.selected_index == attempt.correct_index,
+            explanation=attempt.explanation,
         )
     return AnswerResultRead(
         attempt_id=attempt.id,
@@ -67,6 +87,7 @@ def _attempt_to_result(
         feedback=feedback if feedback is not None else attempt.feedback,
         strengths=strengths or [],
         gaps=gaps or [],
+        explanation=attempt.explanation,
     )
 
 
@@ -84,6 +105,8 @@ def _attempt_to_summary(attempt: Attempt) -> AttemptSummaryRead:
         score=attempt.score,
         feedback=attempt.feedback,
         created_at=attempt.created_at,
+        hint=attempt.hint,
+        explanation=attempt.explanation if answered else None,
     )
 
 
@@ -99,6 +122,7 @@ def start_session(
         user_id=current_user.id,
         mode=payload.mode,
         format=payload.format,
+        difficulty=payload.difficulty,
         section_ids=payload.section_ids,
     )
     db.add(session)
@@ -115,31 +139,70 @@ async def next_question(
     ai_client: OpenRouterClient = Depends(get_ai_client),
 ) -> NextQuestionRead:
     session = _get_owned_session(db, session_id, current_user.id)
-    sections = get_owned_sections(db, session.section_ids, current_user.id)
+    scope = _scope_key(session.section_ids)
 
-    try:
-        if session.format == "quiz":
-            questions = await generate_quiz_questions(sections, session.mode, 1, ai_client)
-            generated = questions[0]
-            attempt = Attempt(
-                session_id=session.id,
-                question=generated["question"],
-                category=generated["category"],
-                format="quiz",
-                options=generated["options"],
-                correct_index=generated["correct_index"],
+    matching = _matching_bank_rows(
+        db, current_user.id, session.mode, session.format, session.difficulty, scope
+    )
+    candidate = next((row for row in matching if row.used_at is None), None)
+
+    if candidate is None:
+        sections = get_owned_sections(db, session.section_ids, current_user.id)
+        avoid_themes = [row.theme for row in matching]
+        try:
+            if session.format == "quiz":
+                generated_batch = await generate_quiz_questions(
+                    sections,
+                    session.mode,
+                    settings.question_bank_batch_size,
+                    ai_client,
+                    difficulty=session.difficulty,
+                    avoid_themes=avoid_themes,
+                )
+            else:
+                generated_batch = await generate_questions(
+                    sections,
+                    session.mode,
+                    settings.question_bank_batch_size,
+                    ai_client,
+                    difficulty=session.difficulty,
+                    avoid_themes=avoid_themes,
+                )
+        except AIClientError as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
+
+        new_rows = [
+            QuestionBank(
+                user_id=current_user.id,
+                mode=session.mode,
+                format=session.format,
+                difficulty=session.difficulty,
+                section_ids=scope,
+                theme=item["theme"],
+                question=item["question"],
+                category=item["category"],
+                options=item.get("options"),
+                correct_index=item.get("correct_index"),
+                hint=item["hint"],
+                explanation=item["explanation"],
             )
-        else:
-            questions = await generate_questions(sections, session.mode, 1, ai_client)
-            generated = questions[0]
-            attempt = Attempt(
-                session_id=session.id,
-                question=generated["question"],
-                category=generated["category"],
-                format="open_ended",
-            )
-    except AIClientError as exc:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
+            for item in generated_batch
+        ]
+        db.add_all(new_rows)
+        db.flush()
+        candidate = new_rows[0]
+
+    candidate.used_at = datetime.now(timezone.utc)
+    attempt = Attempt(
+        session_id=session.id,
+        question=candidate.question,
+        category=candidate.category,
+        format=session.format,
+        options=candidate.options,
+        correct_index=candidate.correct_index,
+        hint=candidate.hint,
+        explanation=candidate.explanation,
+    )
 
     db.add(attempt)
     db.commit()
@@ -150,6 +213,7 @@ async def next_question(
         question=attempt.question,
         category=attempt.category,
         options=attempt.options,
+        hint=attempt.hint,
     )
 
 
@@ -376,6 +440,7 @@ def get_stats(
                 attempt_count=len(scores),
             )
             for section_id, scores in topic_scores.items()
+            if section_id in section_names
         ),
         key=lambda topic: topic.average_score,
     )[:5]
@@ -405,6 +470,7 @@ def get_session(
         id=session.id,
         mode=session.mode,
         format=session.format,
+        difficulty=session.difficulty,
         section_ids=session.section_ids,
         started_at=session.started_at,
         finished_at=session.finished_at,

@@ -52,6 +52,21 @@ export default function SectionsScreen() {
     }
   }
 
+  async function handleDeleteSection(id, name) {
+    if (!window.confirm(`Delete "${name}" and all its notes? This can't be undone.`)) return
+    setError(null)
+    try {
+      await api.deleteSection(id)
+      if (selectedSection?.id === id) {
+        resetDocForm()
+        setSelectedSection(null)
+      }
+      await loadSections()
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
   function resetDocForm() {
     setEditingDocId(null)
     setDocTitle('')
@@ -116,32 +131,52 @@ export default function SectionsScreen() {
         </p>
       )}
 
-      <section>
-        <h2>Your sections</h2>
-        <ul className="section-list">
-          {sections.map((s) => (
-            <li key={s.id}>
-              <button onClick={() => openSection(s.id)}>{s.name}</button>
-            </li>
-          ))}
-          {sections.length === 0 && <li>No sections yet — create one below.</li>}
-        </ul>
+      <div className="sections-layout">
+        <section className="sections-panel">
+          <h2>Your sections</h2>
+          <ul className="section-list">
+            {sections.map((s) => (
+              <li key={s.id}>
+                <div className={`section-card${selectedSection?.id === s.id ? ' active' : ''}`}>
+                  <button className="section-card-open" onClick={() => openSection(s.id)}>
+                    {s.name}
+                  </button>
+                  <button
+                    type="button"
+                    className="section-card-delete"
+                    onClick={() => handleDeleteSection(s.id, s.name)}
+                    aria-label={`Delete ${s.name}`}
+                    title="Delete section"
+                  >
+                    ×
+                  </button>
+                </div>
+              </li>
+            ))}
+            {sections.length === 0 && (
+              <li className="section-list-empty">No sections yet — create one to get started.</li>
+            )}
+          </ul>
+        </section>
 
-        <form onSubmit={handleCreateSection} className="create-section-form">
-          <input
-            placeholder="Section name"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            required
-          />
-          <input
-            placeholder="Description (optional)"
-            value={newDescription}
-            onChange={(e) => setNewDescription(e.target.value)}
-          />
-          <button type="submit">Create section</button>
-        </form>
-      </section>
+        <section className="create-section-panel">
+          <h3>Create new section</h3>
+          <form onSubmit={handleCreateSection} className="create-section-form">
+            <input
+              placeholder="Section name"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              required
+            />
+            <input
+              placeholder="Description (optional)"
+              value={newDescription}
+              onChange={(e) => setNewDescription(e.target.value)}
+            />
+            <button type="submit">Create section</button>
+          </form>
+        </section>
+      </div>
 
       {selectedSection && (
         <section>

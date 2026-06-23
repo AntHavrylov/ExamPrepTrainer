@@ -39,7 +39,9 @@ class Section(Base):
     description: Mapped[str | None] = mapped_column(String(1000))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
-    documents: Mapped[list["Document"]] = relationship(back_populates="section")
+    documents: Mapped[list["Document"]] = relationship(
+        back_populates="section", cascade="all, delete-orphan"
+    )
 
 
 class Document(Base):
@@ -61,6 +63,7 @@ class Session(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     mode: Mapped[str] = mapped_column(String(20), nullable=False)
     format: Mapped[str] = mapped_column(String(20), nullable=False)
+    difficulty: Mapped[str] = mapped_column(String(20), nullable=False, default="medium")
     section_ids: Mapped[list[int]] = mapped_column(JSON, nullable=False)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -79,7 +82,29 @@ class Attempt(Base):
     correct_index: Mapped[int | None] = mapped_column()
     selected_index: Mapped[int | None] = mapped_column()
     answer: Mapped[str | None] = mapped_column(Text)
+    hint: Mapped[str | None] = mapped_column(Text)
+    explanation: Mapped[str | None] = mapped_column(Text)
 
     score: Mapped[int | None] = mapped_column()
     feedback: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class QuestionBank(Base):
+    __tablename__ = "question_bank"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    mode: Mapped[str] = mapped_column(String(20), nullable=False)
+    format: Mapped[str] = mapped_column(String(20), nullable=False)
+    difficulty: Mapped[str] = mapped_column(String(20), nullable=False, default="medium")
+    section_ids: Mapped[list[int]] = mapped_column(JSON, nullable=False)
+    theme: Mapped[str] = mapped_column(String(255), nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str] = mapped_column(String(20), nullable=False)
+    options: Mapped[list[str] | None] = mapped_column(JSON)
+    correct_index: Mapped[int | None] = mapped_column()
+    hint: Mapped[str] = mapped_column(Text, nullable=False)
+    explanation: Mapped[str] = mapped_column(Text, nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)

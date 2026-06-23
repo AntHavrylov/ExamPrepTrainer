@@ -207,6 +207,7 @@ export const api = {
   createSection: (name, description) =>
     request('/sections', { method: 'POST', body: { name, description: description || null } }),
   getSection: (id) => request(`/sections/${id}`),
+  deleteSection: (id) => request(`/sections/${id}`, { method: 'DELETE' }),
   addDocument: (sectionId, title, content) =>
     request(`/sections/${sectionId}/documents`, { method: 'POST', body: { title, content } }),
   uploadDocument: (sectionId, file) => {
@@ -218,8 +219,11 @@ export const api = {
     request(`/documents/${id}`, { method: 'PUT', body: { title, content } }),
   deleteDocument: (id) => request(`/documents/${id}`, { method: 'DELETE' }),
 
-  startSession: (sectionIds, mode, format) =>
-    request('/sessions', { method: 'POST', body: { section_ids: sectionIds, mode, format } }),
+  startSession: (sectionIds, mode, format, difficulty) =>
+    request('/sessions', {
+      method: 'POST',
+      body: { section_ids: sectionIds, mode, format, difficulty },
+    }),
   nextQuestion: (sessionId) => request(`/sessions/${sessionId}/next`, { method: 'POST' }),
   submitAnswer: (sessionId, payload) =>
     request(`/sessions/${sessionId}/answer`, { method: 'POST', body: payload }),

@@ -20,6 +20,7 @@ class Settings(BaseSettings):
 
     max_questions_per_generate: int = 20
     max_generation_context_chars: int = 12000
+    question_bank_batch_size: int = 5
 
     ai_rate_limit_max_requests: int = 30
     ai_rate_limit_window_seconds: int = 60

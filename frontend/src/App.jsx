@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import './App.css'
 import ThemeToggle from './components/ThemeToggle'
+import Sidebar from './components/Sidebar'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import LoginScreen from './screens/LoginScreen'
 import SectionsScreen from './screens/SectionsScreen'
@@ -14,10 +15,15 @@ function AppShell() {
   const [view, setView] = useState('sections')
   const [sessionId, setSessionId] = useState(null)
 
-  if (authLoading) return <p>Loading...</p>
+  if (authLoading) return <p className="app-loading">Loading...</p>
 
   if (!token || !user) {
-    return <LoginScreen />
+    return (
+      <div className="auth-page">
+        <ThemeToggle />
+        <LoginScreen />
+      </div>
+    )
   }
 
   function goToTraining(id) {
@@ -34,38 +40,29 @@ function AppShell() {
     setView('sections')
   }
 
+  function navigate(target) {
+    if (target === 'sections') goToSections()
+    else setView(target)
+  }
+
+  const activeNav = view === 'sections' || view === 'progress' ? view : 'start-training'
+
   return (
-    <div className="app">
-      <header className="app-header">
-        <h1>Exam Prep Trainer</h1>
-        <div className="app-header-right">
-          <span>{user.email}</span>
-          <button onClick={logout}>Log out</button>
+    <div className="app-shell">
+      <Sidebar activeNav={activeNav} onNavigate={navigate} user={user} onLogout={logout} />
+
+      <main className="app-main">
+        <div className="app-content">
+          {view === 'sections' && <SectionsScreen />}
+          {view === 'start-training' && <StartTrainingScreen onStarted={goToTraining} />}
+          {view === 'training' && sessionId && (
+            <TrainingScreen sessionId={sessionId} onFinish={goToSummary} />
+          )}
+          {view === 'summary' && sessionId && (
+            <SummaryScreen sessionId={sessionId} onDone={goToSections} />
+          )}
+          {view === 'progress' && <ProgressScreen />}
         </div>
-      </header>
-
-      <nav className="app-nav">
-        <button onClick={goToSections} disabled={view === 'sections'}>
-          Sections
-        </button>
-        <button onClick={() => setView('start-training')} disabled={view === 'start-training'}>
-          Train
-        </button>
-        <button onClick={() => setView('progress')} disabled={view === 'progress'}>
-          Progress
-        </button>
-      </nav>
-
-      <main>
-        {view === 'sections' && <SectionsScreen />}
-        {view === 'start-training' && <StartTrainingScreen onStarted={goToTraining} />}
-        {view === 'training' && sessionId && (
-          <TrainingScreen sessionId={sessionId} onFinish={goToSummary} />
-        )}
-        {view === 'summary' && sessionId && (
-          <SummaryScreen sessionId={sessionId} onDone={goToSections} />
-        )}
-        {view === 'progress' && <ProgressScreen />}
       </main>
     </div>
   )
@@ -74,7 +71,6 @@ function AppShell() {
 export default function App() {
   return (
     <AuthProvider>
-      <ThemeToggle />
       <AppShell />
     </AuthProvider>
   )

@@ -56,8 +56,20 @@ def test_generate_parses_valid_json(client, make_user):
 
     valid_json = json.dumps(
         [
-            {"question": "What is the GIL?", "category": "technical"},
-            {"question": "Tell me about a time you debugged a hard issue.", "category": "behavioral"},
+            {
+                "question": "What is the GIL?",
+                "category": "technical",
+                "theme": "python gil",
+                "hint": "Think about thread safety.",
+                "explanation": "The GIL serializes bytecode execution across threads.",
+            },
+            {
+                "question": "Tell me about a time you debugged a hard issue.",
+                "category": "behavioral",
+                "theme": "debugging",
+                "hint": "Use the STAR method.",
+                "explanation": "A strong answer covers situation, task, action, and result.",
+            },
         ]
     )
     _override_ai_client(_StubAIClient(valid_json))
@@ -83,7 +95,9 @@ def test_generate_parses_json_wrapped_in_prose_and_fences(client, make_user):
     messy = (
         "Sure! Here are your questions:\n"
         "```json\n"
-        '[{"question": "Explain decorators.", "category": "technical"}]\n'
+        '[{"question": "Explain decorators.", "category": "technical", "theme": "decorators", '
+        '"hint": "Think about functions that wrap functions.", '
+        '"explanation": "A decorator wraps a function to extend its behavior."}]\n'
         "```\n"
         "Let me know if you need more."
     )
@@ -105,7 +119,17 @@ def test_generate_retries_once_on_invalid_json(client, make_user):
     headers = make_user("gen-e@example.com")
     section_id = _create_section_with_document(client, headers)
 
-    good_json = json.dumps([{"question": "Q1", "category": "technical"}])
+    good_json = json.dumps(
+        [
+            {
+                "question": "Q1",
+                "category": "technical",
+                "theme": "general",
+                "hint": "A small nudge.",
+                "explanation": "A model explanation.",
+            }
+        ]
+    )
     stub = _FlakyJSONAIClient("not json at all", good_json)
     _override_ai_client(stub)
     try:
@@ -227,6 +251,9 @@ def test_generate_quiz_questions_parses_valid_json():
                 "category": "technical",
                 "options": ["def", "async def", "coroutine", "await"],
                 "correct_index": 1,
+                "theme": "async coroutines",
+                "hint": "It's two words.",
+                "explanation": "`async def` declares a coroutine function.",
             }
         ]
     )
@@ -239,6 +266,9 @@ def test_generate_quiz_questions_parses_valid_json():
             "category": "technical",
             "options": ["def", "async def", "coroutine", "await"],
             "correct_index": 1,
+            "theme": "async coroutines",
+            "hint": "It's two words.",
+            "explanation": "`async def` declares a coroutine function.",
         }
     ]
 
@@ -249,7 +279,8 @@ def test_generate_quiz_questions_parses_json_wrapped_in_prose_and_fences():
         "```json\n"
         '[{"question": "What is PEP 8?", "category": "technical", '
         '"options": ["A style guide", "A package manager", "A web framework", "A test runner"], '
-        '"correct_index": 0}]\n'
+        '"correct_index": 0, "theme": "pep8", "hint": "It is a style document.", '
+        '"explanation": "PEP 8 is the Python style guide."}]\n'
         "```\n"
         "Enjoy!"
     )
@@ -271,6 +302,9 @@ def test_generate_quiz_questions_retries_once_on_malformed_item():
                 "category": "technical",
                 "options": ["a", "b", "c", "d"],
                 "correct_index": 2,
+                "theme": "general",
+                "hint": "A small nudge.",
+                "explanation": "A model explanation.",
             }
         ]
     )

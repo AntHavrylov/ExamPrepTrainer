@@ -6,6 +6,7 @@ export default function StartTrainingScreen({ onStarted }) {
   const [selectedIds, setSelectedIds] = useState([])
   const [mode, setMode] = useState('mixed')
   const [format, setFormat] = useState('open_ended')
+  const [difficulty, setDifficulty] = useState('medium')
   const [error, setError] = useState(null)
   const [starting, setStarting] = useState(false)
 
@@ -29,7 +30,7 @@ export default function StartTrainingScreen({ onStarted }) {
     setError(null)
     setStarting(true)
     try {
-      const session = await api.startSession(selectedIds, mode, format)
+      const session = await api.startSession(selectedIds, mode, format, difficulty)
       onStarted(session.id)
     } catch (err) {
       setError(err.message)
@@ -77,6 +78,15 @@ export default function StartTrainingScreen({ onStarted }) {
           <select value={format} onChange={(e) => setFormat(e.target.value)}>
             <option value="open_ended">Open-ended Q&amp;A</option>
             <option value="quiz">Multiple-choice quiz</option>
+          </select>
+        </label>
+
+        <label>
+          Difficulty
+          <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)}>
+            <option value="easy">Easy</option>
+            <option value="medium">Medium</option>
+            <option value="hard">Hard</option>
           </select>
         </label>
 
