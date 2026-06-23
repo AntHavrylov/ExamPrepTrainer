@@ -1,0 +1,109 @@
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+}
+
+.app-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-nav {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  font-size: 14px;
+}
+
+.checkbox-label {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+fieldset {
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.error {
+  color: #b00020;
+  font-weight: 600;
+}
+
+.correct {
+  color: #1a7f37;
+  font-weight: 600;
+}
+
+.incorrect {
+  color: #b00020;
+  font-weight: 600;
+}
+
+.quiz-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.section-list,
+.document-list,
+.summary-list {
+  list-style: none;
+  padding: 0;
+  text-align: left;
+}
+
+.document-list li,
+.summary-list li {
+  border: 1px solid #eee;
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 8px;
+}
+
+.category {
+  text-transform: uppercase;
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.question {
+  font-size: 18px;
+  margin-bottom: 16px;
+}
+
+.link {
+  background: none;
+  border: none;
+  color: #3b6ddb;
+  text-decoration: underline;
+  padding: 0;
+  margin-top: 8px;
+}
+
+textarea {
+  resize: vertical;
+}

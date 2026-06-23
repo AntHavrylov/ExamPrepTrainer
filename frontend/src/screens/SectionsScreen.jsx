@@ -1,0 +1,172 @@
+import { useEffect, useState } from 'react'
+import { api } from '../api'
+
+export default function SectionsScreen() {
+  const [sections, setSections] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [newName, setNewName] = useState('')
+  const [newDescription, setNewDescription] = useState('')
+  const [selectedSection, setSelectedSection] = useState(null)
+  const [docTitle, setDocTitle] = useState('')
+  const [docContent, setDocContent] = useState('')
+  const [editingDocId, setEditingDocId] = useState(null)
+
+  useEffect(() => {
+    api
+      .listSections()
+      .then(setSections)
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function loadSections() {
+    try {
+      const data = await api.listSections()
+      setSections(data)
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function handleCreateSection(e) {
+    e.preventDefault()
+    setError(null)
+    try {
+      await api.createSection(newName, newDescription)
+      setNewName('')
+      setNewDescription('')
+      await loadSections()
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function openSection(id) {
+    setError(null)
+    try {
+      const data = await api.getSection(id)
+      setSelectedSection(data)
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  function resetDocForm() {
+    setEditingDocId(null)
+    setDocTitle('')
+    setDocContent('')
+  }
+
+  async function handleSaveDocument(e) {
+    e.preventDefault()
+    if (!selectedSection) return
+    setError(null)
+    try {
+      if (editingDocId) {
+        await api.updateDocument(editingDocId, docTitle, docContent)
+      } else {
+        await api.addDocument(selectedSection.id, docTitle, docContent)
+      }
+      resetDocForm()
+      await openSection(selectedSection.id)
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  function startEditDocument(doc) {
+    setEditingDocId(doc.id)
+    setDocTitle(doc.title)
+    setDocContent(doc.content)
+  }
+
+  async function handleDeleteDocument(id) {
+    setError(null)
+    try {
+      await api.deleteDocument(id)
+      if (editingDocId === id) resetDocForm()
+      await openSection(selectedSection.id)
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  if (loading) return <p>Loading sections...</p>
+
+  return (
+    <div className="sections-screen">
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+
+      <section>
+        <h2>Your sections</h2>
+        <ul className="section-list">
+          {sections.map((s) => (
+            <li key={s.id}>
+              <button onClick={() => openSection(s.id)}>{s.name}</button>
+            </li>
+          ))}
+          {sections.length === 0 && <li>No sections yet — create one below.</li>}
+        </ul>
+
+        <form onSubmit={handleCreateSection} className="create-section-form">
+          <input
+            placeholder="Section name"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            required
+          />
+          <input
+            placeholder="Description (optional)"
+            value={newDescription}
+            onChange={(e) => setNewDescription(e.target.value)}
+          />
+          <button type="submit">Create section</button>
+        </form>
+      </section>
+
+      {selectedSection && (
+        <section>
+          <h3>{selectedSection.name}</h3>
+          <ul className="document-list">
+            {selectedSection.documents.map((doc) => (
+              <li key={doc.id}>
+                <strong>{doc.title}</strong>
+                <p>{doc.content}</p>
+                <button onClick={() => startEditDocument(doc)}>Edit</button>
+                <button onClick={() => handleDeleteDocument(doc.id)}>Delete</button>
+              </li>
+            ))}
+            {selectedSection.documents.length === 0 && <li>No notes yet.</li>}
+          </ul>
+
+          <form onSubmit={handleSaveDocument} className="document-form">
+            <input
+              placeholder="Title"
+              value={docTitle}
+              onChange={(e) => setDocTitle(e.target.value)}
+              required
+            />
+            <textarea
+              placeholder="Paste your notes here..."
+              value={docContent}
+              onChange={(e) => setDocContent(e.target.value)}
+              rows={6}
+              required
+            />
+            <button type="submit">{editingDocId ? 'Save changes' : 'Add notes'}</button>
+            {editingDocId && (
+              <button type="button" onClick={resetDocForm}>
+                Cancel
+              </button>
+            )}
+          </form>
+        </section>
+      )}
+    </div>
+  )
+}

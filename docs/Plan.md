@@ -314,23 +314,23 @@ only exists once Sessions/Attempts are persisted.
 **Goal:** make it usable in the browser, with login.
 
 ### Subtasks
-- [ ] `npm create vite@latest frontend -- --template react`
-- [ ] Configure dev proxy to backend
-- [ ] Auth context: store JWT, send `Authorization` header, handle 401 -> logout
-- [ ] **Login / Register** screen
-- [ ] **Sections** screen: list own sections, create, plain-text editor to fill content
-- [ ] **Start training** screen: section checkboxes + mode selector + format
+- [x] `npm create vite@latest frontend -- --template react`
+- [x] Configure dev proxy to backend
+- [x] Auth context: store JWT, send `Authorization` header, handle 401 -> logout
+- [x] **Login / Register** screen
+- [x] **Sections** screen: list own sections, create, plain-text editor to fill content
+- [x] **Start training** screen: section checkboxes + mode selector + format
       selector (open-ended Q&A or quiz)
-- [ ] **Training** screen: chat-like flow — question -> answer input -> score/feedback -> next
-  - [ ] Open-ended: free-text answer box
-  - [ ] Quiz: render `options` as selectable buttons instead of a text box;
+- [x] **Training** screen: chat-like flow — question -> answer input -> score/feedback -> next
+  - [x] Open-ended: free-text answer box
+  - [x] Quiz: render `options` as selectable buttons instead of a text box;
         disable re-selection once answered, then show correct/incorrect + feedback
-  - [ ] Loading states while AI is working (calls take seconds)
-- [ ] **Summary** screen: questions, scores, average
-- [ ] State via React state/context (no extra libs needed)
+  - [x] Loading states while AI is working (calls take seconds)
+- [x] **Summary** screen: questions, scores, average
+- [x] State via React state/context (no extra libs needed)
 
 ### Tests
-- [ ] Light smoke tests (Vitest) for auth context and one screen render (optional)
+- [x] Light smoke tests (Vitest) for auth context and one screen render (optional)
 
 ### Definition of Done
 - End-to-end in browser: register -> login -> fill a section with text -> train ->
@@ -378,7 +378,7 @@ only exists once Sessions/Attempts are persisted.
 - [x] Phase 5 — Question generation
 - [x] Phase 6 — Answer evaluation
 - [x] Phase 7 — Sessions + persistence (user-scoped, open-ended + quiz)
-- [ ] Phase 8 — React frontend with login
+- [x] Phase 8 — React frontend with login
 - [ ] Phase 9 — Polish
 - [ ] Phase 10 — Deploy
 

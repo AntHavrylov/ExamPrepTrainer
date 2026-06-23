@@ -39,7 +39,10 @@ def _latest_attempt(db: DBSession, session_id: int) -> Attempt | None:
 
 
 def _attempt_to_result(
-    attempt: Attempt, strengths: list[str] | None = None, gaps: list[str] | None = None
+    attempt: Attempt,
+    strengths: list[str] | None = None,
+    gaps: list[str] | None = None,
+    feedback: str | None = None,
 ) -> AnswerResultRead:
     if attempt.format == "quiz":
         return AnswerResultRead(
@@ -54,7 +57,7 @@ def _attempt_to_result(
         attempt_id=attempt.id,
         format=attempt.format,
         score=attempt.score,
-        feedback=attempt.feedback,
+        feedback=feedback if feedback is not None else attempt.feedback,
         strengths=strengths or [],
         gaps=gaps or [],
     )
@@ -200,19 +203,24 @@ async def answer(
     except AIClientError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
 
-    feedback = evaluation["feedback"]
+    stored_feedback = evaluation["feedback"]
     if evaluation["strengths"]:
-        feedback += "\n\nStrengths: " + "; ".join(evaluation["strengths"])
+        stored_feedback += "\n\nStrengths: " + "; ".join(evaluation["strengths"])
     if evaluation["gaps"]:
-        feedback += "\nGaps: " + "; ".join(evaluation["gaps"])
+        stored_feedback += "\nGaps: " + "; ".join(evaluation["gaps"])
 
     attempt.answer = payload.answer
     attempt.score = evaluation["score"]
-    attempt.feedback = feedback
+    attempt.feedback = stored_feedback
     db.commit()
     db.refresh(attempt)
 
-    return _attempt_to_result(attempt, strengths=evaluation["strengths"], gaps=evaluation["gaps"])
+    return _attempt_to_result(
+        attempt,
+        strengths=evaluation["strengths"],
+        gaps=evaluation["gaps"],
+        feedback=evaluation["feedback"],
+    )
 
 
 @router.get("/{session_id}", response_model=SessionSummaryRead)
