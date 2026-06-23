@@ -2,8 +2,9 @@
 
 A web app for interview and exam preparation. A user registers, fills their own
 knowledge-base sections with plain text, selects one or more sections, picks a task
-type (technical / behavioral / mixed), and the AI generates questions, accepts
-answers, and scores them with feedback. Each user's data is private.
+type (technical / behavioral / mixed) and a training format (open-ended Q&A or
+multiple-choice quiz), and the AI generates questions, accepts answers, and scores
+them with feedback. Each user's data is private.
 
 > **Execution:** this plan is carried out by an AI coding agent (Claude Code).
 > Each phase is a separate, verifiable step with its own checklist, tests, and
@@ -28,6 +29,10 @@ answers, and scores them with feedback. Each user's data is private.
 | Deploy frontend | **Vercel** / Netlify / Cloudflare Pages | Free |
 
 **Task types** (user choice): `technical`, `behavioral`, `mixed`.
+
+**Format** (user choice, per session): `open_ended` (free-text answer, AI-scored
+via `evaluate_answer`) or `quiz` (multiple-choice, auto-graded by comparing the
+selected option to a server-stored correct index — no AI call needed to score).
 
 > Auth alternative: if you use Supabase for the DB anyway, you can offload
 > register/login to **Supabase Auth** (less code, JWT out of the box). The primary
@@ -70,7 +75,7 @@ prep-trainer/
 │   │   │   └── deps.py        # get_current_user
 │   │   ├── ai/
 │   │   │   ├── client.py      # OpenRouter wrapper (mockable)
-│   │   │   ├── generate.py    # question generation
+│   │   │   ├── generate.py    # question generation (open-ended + quiz)
 │   │   │   └── evaluate.py    # answer evaluation
 │   │   └── routers/
 │   │       ├── auth.py        # register / login / me
@@ -247,30 +252,58 @@ text**. First-class feature, not just seeding.
 
 ---
 
-## Phase 7 — Sessions & persistence (user-scoped)
+## Phase 7 — Sessions & persistence (user-scoped, open-ended + quiz)
 
-**Goal:** persist each user's training run and history.
+**Goal:** persist each user's training run and history. The user picks, at session
+start, both a task type (`technical`/`behavioral`/`mixed`) and a **format**:
+`open_ended` (free-text, AI-scored) or `quiz` (multiple-choice, auto-graded). This
+is also where quiz-mode question generation is built, since hiding the correct
+answer from the client until it's submitted requires server-side state — which
+only exists once Sessions/Attempts are persisted.
 
 ### Subtasks
-- [ ] `Session` model: `id`, `user_id (FK)`, `mode`, `section_ids`, `started_at`, `finished_at`
-- [ ] `Attempt` model: `id`, `session_id (FK)`, `question`, `category`, `answer`,
-      `score`, `feedback`, `created_at`
-- [ ] Alembic migration
-- [ ] `routers/sessions.py` (all under `get_current_user`):
-  - [ ] `POST /sessions` — start a session
-  - [ ] `POST /sessions/{id}/next` — next question
-  - [ ] `POST /sessions/{id}/answer` — answer -> evaluate -> store
-  - [ ] `GET /sessions/{id}` — session summary
+- [ ] `Session` model: `id`, `user_id (FK)`, `mode`, `format` (`open_ended` | `quiz`),
+      `section_ids`, `started_at`, `finished_at`
+- [ ] `Attempt` model: `id`, `session_id (FK)`, `question`, `category`, `format`,
+      `options` (JSON list, quiz only), `correct_index` (quiz only — **never**
+      serialized in any response before the answer is submitted), `selected_index`
+      (quiz only), `answer` (free text, open-ended only), `score`, `feedback`,
+      `created_at`
+- [ ] Alembic migration for the new models
+- [ ] `ai/generate.py`: `generate_quiz_questions(sections, mode, count)` — reuses
+      the same char-budgeted `build_context` and mode instructions as
+      `generate_questions`, but the strict-JSON schema is
+      `{question, category, options: [4 strings], correct_index: 0-3}`; reuse the
+      shared JSON-parsing helper and the one-retry-on-parse-fail behavior
+- [ ] `routers/sessions.py` (all under `get_current_user`, filtered by `user_id`):
+  - [ ] `POST /sessions` — start a session; input `section_ids[]`, `mode`, `format`
+  - [ ] `POST /sessions/{id}/next` — generate the next question via
+        `generate_questions` (open-ended) or `generate_quiz_questions` (quiz)
+        depending on the session's `format`; for quiz, store `correct_index`
+        server-side and respond with only `{question, category, options}` —
+        no answer key
+  - [ ] `POST /sessions/{id}/answer`:
+        - open-ended: body has free-text `answer` -> `evaluate_answer` -> store
+          score/feedback
+        - quiz: body has `selected_index` -> compare against the stored
+          `correct_index` (deterministic, no AI call) -> score 10/0 + feedback
+          that reveals the correct option
+  - [ ] `GET /sessions/{id}` — session summary (includes correct answers for any
+        quiz attempts already submitted)
   - [ ] `GET /sessions` — own session history (paginated)
 - [ ] Prevent duplicate scoring on double-submit (idempotency per attempt)
 
 ### Tests
-- [ ] Full cycle (mocked AI): start -> next -> answer -> stored attempt with score
+- [ ] Full open-ended cycle (mocked AI): start -> next -> answer -> stored attempt with score
+- [ ] Full quiz cycle (mocked AI): start -> next (response has no `correct_index`/
+      answer field) -> answer with the correct index -> score 10; wrong index -> score 0
 - [ ] User sees only their own sessions
-- [ ] Double-submitting the same answer doesn't double-score
+- [ ] Double-submitting the same answer doesn't double-score (both formats)
 
 ### Definition of Done
-- Full loop works via `/docs`: login -> start -> question -> answer -> score -> summary
+- Full loop works via `/docs` for **both** formats: login -> start -> question ->
+  answer -> score -> summary
+- Quiz `next` responses never leak the correct answer before it's submitted
 - History is user-isolated
 - All checkboxes `[x]`, `pytest` green
 
@@ -286,8 +319,12 @@ text**. First-class feature, not just seeding.
 - [ ] Auth context: store JWT, send `Authorization` header, handle 401 -> logout
 - [ ] **Login / Register** screen
 - [ ] **Sections** screen: list own sections, create, plain-text editor to fill content
-- [ ] **Start training** screen: section checkboxes + mode selector
+- [ ] **Start training** screen: section checkboxes + mode selector + format
+      selector (open-ended Q&A or quiz)
 - [ ] **Training** screen: chat-like flow — question -> answer input -> score/feedback -> next
+  - [ ] Open-ended: free-text answer box
+  - [ ] Quiz: render `options` as selectable buttons instead of a text box;
+        disable re-selection once answered, then show correct/incorrect + feedback
   - [ ] Loading states while AI is working (calls take seconds)
 - [ ] **Summary** screen: questions, scores, average
 - [ ] State via React state/context (no extra libs needed)
@@ -340,7 +377,7 @@ text**. First-class feature, not just seeding.
 - [x] Phase 4 — OpenRouter connection (mockable)
 - [x] Phase 5 — Question generation
 - [x] Phase 6 — Answer evaluation
-- [ ] Phase 7 — Sessions + persistence (user-scoped)
+- [ ] Phase 7 — Sessions + persistence (user-scoped, open-ended + quiz)
 - [ ] Phase 8 — React frontend with login
 - [ ] Phase 9 — Polish
 - [ ] Phase 10 — Deploy
