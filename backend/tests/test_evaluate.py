@@ -1,7 +1,10 @@
+import asyncio
 import json
 
-from app.ai.client import get_ai_client
-from app.ai.evaluate import _coerce_score
+import pytest
+
+from app.ai.client import AIClientError, get_ai_client
+from app.ai.evaluate import _coerce_score, _parse_stream_evaluation, evaluate_answer_stream
 from app.main import app
 
 
@@ -184,3 +187,80 @@ def test_coerce_score_clamps_and_rounds():
     assert _coerce_score(7.6) == 8
     assert _coerce_score("not a number") == 0
     assert _coerce_score(None) == 0
+
+
+def test_parse_stream_evaluation_parses_well_formed_text():
+    raw = (
+        "SCORE: 9\n"
+        "FEEDBACK: Excellent.\n"
+        "STRENGTHS:\n"
+        "- thorough\n"
+        "- accurate\n"
+        "GAPS:\n"
+        "- (none)\n"
+    )
+    assert _parse_stream_evaluation(raw) == {
+        "score": 9,
+        "feedback": "Excellent.",
+        "strengths": ["thorough", "accurate"],
+        "gaps": [],
+    }
+
+
+def test_parse_stream_evaluation_returns_none_without_score_line():
+    assert _parse_stream_evaluation("just some prose with no structure") is None
+
+
+class _StubStreamingAIClient:
+    def __init__(self, chunks: list[str], fallback_response: str | None = None):
+        self.chunks = chunks
+        self.fallback_response = fallback_response
+        self.complete_calls = 0
+
+    async def stream_complete(self, messages, temperature=None):
+        for chunk in self.chunks:
+            yield chunk
+
+    async def complete(self, messages, temperature=None):
+        self.complete_calls += 1
+        return self.fallback_response or ""
+
+
+async def _run_stream(stub):
+    deltas = []
+    result = None
+    async for delta, evaluation in evaluate_answer_stream("Q", "A", "context", stub):
+        if delta is not None:
+            deltas.append(delta)
+        if evaluation is not None:
+            result = evaluation
+    return deltas, result
+
+
+def test_evaluate_answer_stream_yields_deltas_then_final_result():
+    chunks = ["SCORE: 7\n", "FEEDBACK: Good answer.\n", "STRENGTHS:\n- clear\nGAPS:\n- depth\n"]
+    stub = _StubStreamingAIClient(chunks)
+
+    deltas, result = asyncio.run(_run_stream(stub))
+
+    assert deltas == chunks
+    assert result == {"score": 7, "feedback": "Good answer.", "strengths": ["clear"], "gaps": ["depth"]}
+
+
+def test_evaluate_answer_stream_falls_back_to_non_streamed_retry_on_malformed_output():
+    stub = _StubStreamingAIClient(
+        chunks=["this is not the right format at all"],
+        fallback_response="SCORE: 3\nFEEDBACK: Retry worked.\nSTRENGTHS:\n- (none)\nGAPS:\n- (none)\n",
+    )
+
+    _, result = asyncio.run(_run_stream(stub))
+
+    assert result == {"score": 3, "feedback": "Retry worked.", "strengths": [], "gaps": []}
+    assert stub.complete_calls == 1
+
+
+def test_evaluate_answer_stream_raises_when_unparseable_even_after_retry():
+    stub = _StubStreamingAIClient(chunks=["garbage"], fallback_response="still garbage")
+
+    with pytest.raises(AIClientError):
+        asyncio.run(_run_stream(stub))

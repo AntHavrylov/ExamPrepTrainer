@@ -342,7 +342,7 @@ only exists once Sessions/Attempts are persisted.
 
 ## Phase 9 — Polish (iterative, one at a time)
 
-- [ ] Streaming responses (tokens appear progressively)
+- [x] Streaming responses (tokens appear progressively) — scoped to open-ended answer evaluation
 - [x] Progress stats: score chart, "weakest topics"
 - [x] Knowledge-base import: upload `.md`/`.txt` into a section
 - [x] Refresh tokens (longer sessions without re-login)
@@ -421,7 +421,7 @@ which also reverse-proxies API paths to the backend — mirroring
 - [x] Phase 6 — Answer evaluation
 - [x] Phase 7 — Sessions + persistence (user-scoped, open-ended + quiz)
 - [x] Phase 8 — React frontend with login
-- [ ] Phase 9 — Polish
+- [x] Phase 9 — Polish
 - [ ] Phase 9.5 — Docker support (local containers)
 - [ ] Phase 10 — Deploy
 

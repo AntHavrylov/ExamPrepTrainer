@@ -1,14 +1,17 @@
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DBSession
 
 from app.ai.client import AIClientError, OpenRouterClient, get_ai_client
 from app.ai.context import build_context
-from app.ai.evaluate import evaluate_answer
+from app.ai.evaluate import evaluate_answer, evaluate_answer_stream
 from app.ai.generate import generate_questions, generate_quiz_questions
 from app.auth.deps import get_current_user
 from app.config import settings
-from app.db import get_db
+from app.db import get_db, get_session_factory
 from app.models import Attempt, Section, User
 from app.models import Session as TrainingSession
 from app.rate_limit import check_ai_rate_limit, enforce_ai_rate_limit
@@ -229,6 +232,101 @@ async def answer(
         gaps=evaluation["gaps"],
         feedback=evaluation["feedback"],
     )
+
+
+def _sse_event(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+async def _sse_result_only(result: AnswerResultRead):
+    yield _sse_event("result", result.model_dump())
+
+
+@router.post("/{session_id}/answer/stream")
+async def answer_stream(
+    session_id: int,
+    payload: AnswerRequest,
+    db: DBSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    ai_client: OpenRouterClient = Depends(get_ai_client),
+    session_factory=Depends(get_session_factory),
+) -> StreamingResponse:
+    session = _get_owned_session(db, session_id, current_user.id)
+
+    attempt = _latest_attempt(db, session.id)
+    if attempt is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="No pending question for this session"
+        )
+
+    if attempt.format != "open_ended":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Streaming is only available for open-ended answers",
+        )
+
+    if attempt.score is not None:
+        return StreamingResponse(
+            _sse_result_only(_attempt_to_result(attempt)), media_type="text/event-stream"
+        )
+
+    if not payload.answer:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="answer is required for open-ended answers",
+        )
+
+    check_ai_rate_limit(current_user.id)
+
+    sections = get_owned_sections(db, session.section_ids, current_user.id)
+    context = build_context(
+        sections, settings.max_generation_context_chars, query=f"{attempt.question} {payload.answer}"
+    )
+
+    attempt_id = attempt.id
+    question = attempt.question
+    answer_text = payload.answer
+
+    async def event_stream():
+        evaluation = None
+        try:
+            async for delta, final_evaluation in evaluate_answer_stream(
+                question, answer_text, context, ai_client
+            ):
+                if delta is not None:
+                    yield _sse_event("delta", {"text": delta})
+                if final_evaluation is not None:
+                    evaluation = final_evaluation
+        except AIClientError as exc:
+            yield _sse_event("error", {"detail": str(exc)})
+            return
+
+        stream_db = session_factory()
+        try:
+            stored_attempt = stream_db.get(Attempt, attempt_id)
+            stored_feedback = evaluation["feedback"]
+            if evaluation["strengths"]:
+                stored_feedback += "\n\nStrengths: " + "; ".join(evaluation["strengths"])
+            if evaluation["gaps"]:
+                stored_feedback += "\nGaps: " + "; ".join(evaluation["gaps"])
+
+            stored_attempt.answer = answer_text
+            stored_attempt.score = evaluation["score"]
+            stored_attempt.feedback = stored_feedback
+            stream_db.commit()
+            stream_db.refresh(stored_attempt)
+            db_result = _attempt_to_result(
+                stored_attempt,
+                strengths=evaluation["strengths"],
+                gaps=evaluation["gaps"],
+                feedback=evaluation["feedback"],
+            )
+        finally:
+            stream_db.close()
+
+        yield _sse_event("result", db_result.model_dump())
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @router.get("/stats", response_model=StatsRead)

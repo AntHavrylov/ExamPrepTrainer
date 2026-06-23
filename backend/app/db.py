@@ -20,3 +20,14 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+
+def get_session_factory():
+    """Exposes the session factory itself (not an opened session).
+
+    FastAPI closes `yield`-dependencies like `get_db` as soon as the route
+    function returns, before a StreamingResponse body actually streams. Code
+    that needs to write to the DB after streaming has started must open its
+    own session via this factory instead of reusing the request-scoped one.
+    """
+    return SessionLocal

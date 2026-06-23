@@ -108,6 +108,11 @@ textarea {
   resize: vertical;
 }
 
+.streaming-feedback {
+  white-space: pre-wrap;
+  color: #444;
+}
+
 .score-chart {
   display: flex;
   align-items: flex-end;

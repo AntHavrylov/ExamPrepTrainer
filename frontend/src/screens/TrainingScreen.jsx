@@ -5,6 +5,7 @@ export default function TrainingScreen({ sessionId, onFinish }) {
   const [question, setQuestion] = useState(null)
   const [answerText, setAnswerText] = useState('')
   const [result, setResult] = useState(null)
+  const [streamingFeedback, setStreamingFeedback] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [questionCount, setQuestionCount] = useState(0)
@@ -13,6 +14,7 @@ export default function TrainingScreen({ sessionId, onFinish }) {
     setError(null)
     setLoading(true)
     setResult(null)
+    setStreamingFeedback('')
     setAnswerText('')
     try {
       const next = await api.nextQuestion(sessionId)
@@ -30,8 +32,11 @@ export default function TrainingScreen({ sessionId, onFinish }) {
     if (!answerText.trim()) return
     setLoading(true)
     setError(null)
+    setStreamingFeedback('')
     try {
-      const res = await api.submitAnswer(sessionId, { answer: answerText })
+      const res = await api.streamAnswer(sessionId, answerText, (delta) =>
+        setStreamingFeedback((prev) => prev + delta),
+      )
       setResult(res)
     } catch (err) {
       setError(err.message)
@@ -109,7 +114,10 @@ export default function TrainingScreen({ sessionId, onFinish }) {
         </form>
       )}
 
-      {loading && !result && <p>Working, this can take a few seconds...</p>}
+      {loading && !result && isQuiz && <p>Working, this can take a few seconds...</p>}
+      {loading && !result && !isQuiz && (
+        <p className="streaming-feedback">{streamingFeedback || 'Working, this can take a few seconds...'}</p>
+      )}
 
       {result && (
         <div className="result">

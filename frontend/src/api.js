@@ -113,7 +113,7 @@ async function fetchAuthenticated(path, { method = 'GET', body } = {}) {
   return fetch(path, { method, headers, body: requestBody })
 }
 
-async function request(path, options = {}) {
+async function fetchWithRefresh(path, options = {}) {
   let response = await fetchAuthenticated(path, options)
 
   if (response.status === 401 && getRefreshToken()) {
@@ -131,7 +131,64 @@ async function request(path, options = {}) {
     throw new ApiError(401, 'Session expired. Please log in again.')
   }
 
+  return response
+}
+
+async function request(path, options = {}) {
+  const response = await fetchWithRefresh(path, options)
   return parseResponse(response)
+}
+
+function _handleSseEvent(rawEvent, onDelta) {
+  const lines = rawEvent.split('\n')
+  const eventLine = lines.find((line) => line.startsWith('event:'))
+  const dataLine = lines.find((line) => line.startsWith('data:'))
+  if (!eventLine || !dataLine) return undefined
+
+  const eventName = eventLine.slice('event:'.length).trim()
+  const data = JSON.parse(dataLine.slice('data:'.length).trim())
+
+  if (eventName === 'delta') {
+    onDelta?.(data.text)
+    return undefined
+  }
+  if (eventName === 'error') {
+    throw new ApiError(503, data.detail)
+  }
+  return data // the "result" event
+}
+
+// Manual fetch + stream reading instead of EventSource, since EventSource
+// can't send the Authorization header this app requires for every request.
+async function streamAnswer(sessionId, answerText, onDelta) {
+  const response = await fetchWithRefresh(`/sessions/${sessionId}/answer/stream`, {
+    method: 'POST',
+    body: { answer: answerText },
+  })
+
+  if (!response.ok) {
+    return parseResponse(response) // throws ApiError with the server's detail
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let result = null
+
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+
+    let boundary
+    while ((boundary = buffer.indexOf('\n\n')) !== -1) {
+      const rawEvent = buffer.slice(0, boundary)
+      buffer = buffer.slice(boundary + 2)
+      result = _handleSseEvent(rawEvent, onDelta) ?? result
+    }
+  }
+
+  return result
 }
 
 export const api = {
@@ -166,6 +223,7 @@ export const api = {
   nextQuestion: (sessionId) => request(`/sessions/${sessionId}/next`, { method: 'POST' }),
   submitAnswer: (sessionId, payload) =>
     request(`/sessions/${sessionId}/answer`, { method: 'POST', body: payload }),
+  streamAnswer: (sessionId, answerText, onDelta) => streamAnswer(sessionId, answerText, onDelta),
   getSession: (sessionId) => request(`/sessions/${sessionId}`),
   listSessions: () => request('/sessions'),
   getStats: () => request('/sessions/stats'),

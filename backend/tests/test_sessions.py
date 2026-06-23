@@ -26,12 +26,38 @@ class _StubAIClient:
         return self.response_text
 
 
+class _StubStreamingAIClient:
+    def __init__(self, chunks: list[str]):
+        self.chunks = chunks
+        self.stream_calls = 0
+        self.complete_calls = 0
+
+    async def stream_complete(self, messages, temperature=None):
+        self.stream_calls += 1
+        for chunk in self.chunks:
+            yield chunk
+
+    async def complete(self, messages, temperature=None):
+        self.complete_calls += 1
+        return ""
+
+
 def _override_ai_client(stub) -> None:
     app.dependency_overrides[get_ai_client] = lambda: stub
 
 
 def _clear_ai_override() -> None:
     app.dependency_overrides.pop(get_ai_client, None)
+
+
+def _parse_sse(text: str) -> list[tuple[str, dict]]:
+    events = []
+    for block in text.strip().split("\n\n"):
+        if not block:
+            continue
+        event_line, data_line = block.split("\n", 1)
+        events.append((event_line.removeprefix("event: "), json.loads(data_line.removeprefix("data: "))))
+    return events
 
 
 def _create_section_with_document(client, headers) -> int:
@@ -236,3 +262,100 @@ def test_double_submit_does_not_double_score_quiz(client, make_user):
     assert first.status_code == 200
     assert second.status_code == 200
     assert first.json()["score"] == second.json()["score"] == 10
+
+
+def test_stream_answer_full_cycle(client, make_user):
+    headers = make_user("sess-stream@example.com")
+    section_id = _create_section_with_document(client, headers)
+    session_id = _start_session(client, headers, section_id, "open_ended")
+
+    _override_ai_client(_StubAIClient(OPEN_ENDED_QUESTION_JSON))
+    try:
+        client.post(f"/sessions/{session_id}/next", headers=headers)
+    finally:
+        _clear_ai_override()
+
+    stream_chunks = [
+        "SCORE: 8\n",
+        "FEEDBACK: Solid understanding.\n",
+        "STRENGTHS:\n- clear\nGAPS:\n- (none)\n",
+    ]
+    stub = _StubStreamingAIClient(stream_chunks)
+    _override_ai_client(stub)
+    try:
+        response = client.post(
+            f"/sessions/{session_id}/answer/stream",
+            json={"answer": "The GIL is a mutex that..."},
+            headers=headers,
+        )
+    finally:
+        _clear_ai_override()
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+
+    events = _parse_sse(response.text)
+    delta_events = [e for e in events if e[0] == "delta"]
+    result_events = [e for e in events if e[0] == "result"]
+
+    assert len(delta_events) == len(stream_chunks)
+    assert "".join(e[1]["text"] for e in delta_events) == "".join(stream_chunks)
+    assert len(result_events) == 1
+    result = result_events[0][1]
+    assert result["score"] == 8
+    assert result["strengths"] == ["clear"]
+    assert result["gaps"] == []
+
+    summary = client.get(f"/sessions/{session_id}", headers=headers)
+    attempts = summary.json()["attempts"]
+    assert attempts[0]["score"] == 8
+    assert attempts[0]["answer"] == "The GIL is a mutex that..."
+
+
+def test_stream_answer_rejected_for_quiz_format(client, make_user):
+    headers = make_user("sess-stream-quiz@example.com")
+    section_id = _create_section_with_document(client, headers)
+    session_id = _start_session(client, headers, section_id, "quiz")
+
+    _override_ai_client(_StubAIClient(QUIZ_QUESTION_JSON))
+    try:
+        client.post(f"/sessions/{session_id}/next", headers=headers)
+    finally:
+        _clear_ai_override()
+
+    response = client.post(
+        f"/sessions/{session_id}/answer/stream", json={"selected_index": 1}, headers=headers
+    )
+    assert response.status_code == 422
+
+
+def test_stream_answer_double_submit_does_not_recall_ai(client, make_user):
+    headers = make_user("sess-stream-dup@example.com")
+    section_id = _create_section_with_document(client, headers)
+    session_id = _start_session(client, headers, section_id, "open_ended")
+
+    _override_ai_client(_StubAIClient(OPEN_ENDED_QUESTION_JSON))
+    try:
+        client.post(f"/sessions/{session_id}/next", headers=headers)
+    finally:
+        _clear_ai_override()
+
+    stub = _StubStreamingAIClient(["SCORE: 6\nFEEDBACK: ok\nSTRENGTHS:\n- (none)\nGAPS:\n- (none)\n"])
+    _override_ai_client(stub)
+    try:
+        first = client.post(
+            f"/sessions/{session_id}/answer/stream", json={"answer": "first answer"}, headers=headers
+        )
+        second = client.post(
+            f"/sessions/{session_id}/answer/stream", json={"answer": "second answer"}, headers=headers
+        )
+    finally:
+        _clear_ai_override()
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert stub.stream_calls == 1
+
+    first_result = _parse_sse(first.text)[-1][1]
+    second_result = _parse_sse(second.text)[-1][1]
+    assert first_result["score"] == second_result["score"] == 6

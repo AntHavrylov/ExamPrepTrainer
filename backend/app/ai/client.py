@@ -1,4 +1,6 @@
 import asyncio
+import json
+from collections.abc import AsyncIterator
 
 import httpx
 
@@ -68,6 +70,49 @@ class OpenRouterClient:
                     raise AIClientError("Unexpected OpenRouter response shape") from exc
 
         raise AIClientError("OpenRouter request failed")
+
+    async def stream_complete(
+        self, messages: list[dict[str, str]], temperature: float | None = None
+    ) -> AsyncIterator[str]:
+        if not self.api_key:
+            raise AIClientError("OpenRouter API key is not configured")
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload: dict = {"model": self.model, "messages": messages, "stream": True}
+        if temperature is not None:
+            payload["temperature"] = temperature
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout, transport=self.transport) as http_client:
+                async with http_client.stream(
+                    "POST", OPENROUTER_URL, headers=headers, json=payload
+                ) as response:
+                    if response.status_code >= 400:
+                        body = await response.aread()
+                        raise AIClientError(
+                            f"OpenRouter returned {response.status_code}: "
+                            f"{body.decode(errors='replace')}"
+                        )
+
+                    async for line in response.aiter_lines():
+                        line = line.strip()
+                        if not line.startswith("data:"):
+                            continue
+                        data = line[len("data:") :].strip()
+                        if data == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data)
+                            delta = chunk["choices"][0]["delta"].get("content")
+                        except (json.JSONDecodeError, KeyError, IndexError, TypeError):
+                            continue
+                        if delta:
+                            yield delta
+        except httpx.HTTPError as exc:
+            raise AIClientError(f"OpenRouter streaming request failed: {exc}") from exc
 
 
 def get_ai_client() -> OpenRouterClient:
