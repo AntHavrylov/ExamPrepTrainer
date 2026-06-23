@@ -114,20 +114,20 @@ prep-trainer/
 models carry `user_id` from the start. Set up Alembic now.
 
 ### Subtasks
-- [ ] Install `sqlalchemy alembic python-jose[cryptography] passlib[bcrypt] python-multipart`
-- [ ] `db.py`: SQLite engine (`sqlite:///./prep.db`), `SessionLocal`, `Base`
-- [ ] Initialize Alembic; create first migration for `User`
-- [ ] `User` model: `id`, `email` (unique), `hashed_password`, `created_at`
-- [ ] `auth/security.py`: bcrypt hashing, JWT create/verify
-- [ ] `auth/deps.py`: `get_current_user` dependency
-- [ ] `routers/auth.py`: `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
-- [ ] `SECRET_KEY`, token TTL in `.env` + `config.py`
+- [x] Install `sqlalchemy alembic python-jose[cryptography] passlib[bcrypt] python-multipart`
+- [x] `db.py`: SQLite engine (`sqlite:///./prep.db`), `SessionLocal`, `Base`
+- [x] Initialize Alembic; create first migration for `User`
+- [x] `User` model: `id`, `email` (unique), `hashed_password`, `created_at`
+- [x] `auth/security.py`: bcrypt hashing, JWT create/verify
+- [x] `auth/deps.py`: `get_current_user` dependency
+- [x] `routers/auth.py`: `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
+- [x] `SECRET_KEY`, token TTL in `.env` + `config.py`
 
 ### Tests
-- [ ] Register a user -> 201; duplicate email -> 400/409
-- [ ] Login with correct creds -> JWT; wrong creds -> 401
-- [ ] `GET /auth/me` without token -> 401; with token -> user data
-- [ ] Password stored only as hash (assert raw password not in DB)
+- [x] Register a user -> 201; duplicate email -> 400/409
+- [x] Login with correct creds -> JWT; wrong creds -> 401
+- [x] `GET /auth/me` without token -> 401; with token -> user data
+- [x] Password stored only as hash (assert raw password not in DB)
 
 ### Definition of Done
 - Two distinct users can register and log in
@@ -335,7 +335,7 @@ text**. First-class feature, not just seeding.
 ## Phase checklist
 
 - [x] Phase 1 — Backend skeleton + /health
-- [ ] Phase 2 — Auth + users (JWT, Alembic)
+- [x] Phase 2 — Auth + users (JWT, Alembic)
 - [ ] Phase 3 — Knowledge base + plain-text editing (user-scoped)
 - [ ] Phase 4 — OpenRouter connection (mockable)
 - [ ] Phase 5 — Question generation
