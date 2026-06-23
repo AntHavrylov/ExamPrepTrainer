@@ -351,6 +351,48 @@ only exists once Sessions/Attempts are persisted.
 
 ---
 
+## Phase 9.5 — Docker support (local containers)
+
+**Goal:** run the whole app (frontend, backend, Postgres) locally via a single
+`docker compose up --build`, as a dress rehearsal for Phase 10 deploy. Using
+Postgres here (instead of SQLite) catches dialect/migration issues before the
+real deploy. The frontend container serves the production build via Nginx,
+which also reverse-proxies API paths to the backend — mirroring
+`vite.config.js`'s dev proxy, so no frontend code changes are needed.
+
+### Subtasks
+- [x] Add `psycopg2-binary` to `backend/requirements.txt` (Postgres driver)
+- [x] `backend/Dockerfile`: install deps, run `alembic upgrade head` then
+      `uvicorn` on container start
+- [x] `backend/.dockerignore` (`.venv`, `__pycache__`, `*.db`, `.env`, etc.)
+- [x] `frontend/Dockerfile`: multi-stage `npm run build` -> `nginx:alpine`
+- [x] `frontend/nginx.conf`: SPA fallback + reverse proxy `/auth`,
+      `/sections`, `/documents`, `/ai`, `/sessions`, `/health` to the
+      `backend` service
+- [x] `frontend/.dockerignore` (`node_modules`, `dist`)
+- [x] `docker-compose.yml` (repo root): `db` (Postgres + volume +
+      healthcheck), `backend` (env_file reuses `backend/.env`, `DATABASE_URL`
+      overridden to Postgres), `frontend` (depends on backend)
+
+### Tests / Verification
+- [ ] `docker compose up --build` starts all 3 services without errors
+- [ ] `curl http://localhost:8000/health` -> `{"status":"ok"}` (backend direct)
+- [ ] `curl http://localhost:8080/health` -> same, via the Nginx proxy
+- [ ] Alembic creates tables in the Postgres container
+- [ ] Full browser flow against the containers: register -> login -> create
+      section -> add text -> train -> answer -> score -> summary
+- [ ] `docker compose down -v` then `up --build` again works from a clean volume
+
+### Definition of Done
+- One command (`docker compose up --build`) brings up Postgres + backend +
+  frontend locally
+- Frontend at `http://localhost:8080` fully functional against the backend
+  through Nginx, with zero frontend code changes
+- Backend talks to Postgres (not SQLite) inside Docker
+- All checkboxes `[x]`, verified manually (infra-only phase, no pytest changes)
+
+---
+
 ## Phase 10 — Deploy
 
 **Goal:** runs on the internet, for free.
@@ -380,6 +422,7 @@ only exists once Sessions/Attempts are persisted.
 - [x] Phase 7 — Sessions + persistence (user-scoped, open-ended + quiz)
 - [x] Phase 8 — React frontend with login
 - [ ] Phase 9 — Polish
+- [ ] Phase 9.5 — Docker support (local containers)
 - [ ] Phase 10 — Deploy
 
 **Rule:** do not advance until every subtask in the current phase is `[x]` and the
