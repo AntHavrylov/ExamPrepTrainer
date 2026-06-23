@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
-import { api, getToken, setToken, setUnauthorizedHandler } from '../api'
+import { api, clearTokens, getToken, setUnauthorizedHandler, storeTokens } from '../api'
 
 const AuthContext = createContext(null)
 
@@ -9,7 +9,8 @@ export function AuthProvider({ children }) {
   const [authLoading, setAuthLoading] = useState(Boolean(getToken()))
 
   const logout = useCallback(() => {
-    setToken(null)
+    api.logout().catch(() => {})
+    clearTokens()
     setTokenState(null)
     setUser(null)
   }, [])
@@ -41,9 +42,9 @@ export function AuthProvider({ children }) {
   }, [])
 
   const login = useCallback(async (email, password) => {
-    const { access_token } = await api.login(email, password)
-    setToken(access_token)
-    setTokenState(access_token)
+    const tokens = await api.login(email, password)
+    storeTokens(tokens)
+    setTokenState(tokens.access_token)
     const me = await api.me()
     setUser(me)
   }, [])

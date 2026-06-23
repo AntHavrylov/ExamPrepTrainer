@@ -39,7 +39,8 @@ describe('AuthContext', () => {
           return Promise.resolve({
             ok: true,
             status: 200,
-            json: () => Promise.resolve({ access_token: 'abc123', token_type: 'bearer' }),
+            json: () =>
+              Promise.resolve({ access_token: 'abc123', refresh_token: 'refresh-abc', token_type: 'bearer' }),
           })
         }
         if (url === '/auth/me') {
@@ -64,5 +65,6 @@ describe('AuthContext', () => {
     await waitFor(() => expect(screen.getByTestId('token')).toHaveTextContent('abc123'))
     expect(screen.getByTestId('user')).toHaveTextContent('a@example.com')
     expect(localStorage.getItem('prep_trainer_token')).toBe('abc123')
+    expect(localStorage.getItem('prep_trainer_refresh_token')).toBe('refresh-abc')
   })
 })

@@ -345,7 +345,7 @@ only exists once Sessions/Attempts are persisted.
 - [ ] Streaming responses (tokens appear progressively)
 - [ ] Progress stats: score chart, "weakest topics"
 - [x] Knowledge-base import: upload `.md`/`.txt` into a section
-- [ ] Refresh tokens (longer sessions without re-login)
+- [x] Refresh tokens (longer sessions without re-login)
 - [ ] Per-user rate limiting on AI endpoints (cost/abuse control)
 - [ ] RAG (embeddings + vector search) if the knowledge base outgrows the token budget
 
