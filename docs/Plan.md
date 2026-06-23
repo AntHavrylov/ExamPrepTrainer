@@ -174,19 +174,19 @@ text**. First-class feature, not just seeding.
 **Goal:** confirm AI calls work; make the client mockable.
 
 ### Subtasks
-- [ ] Create OpenRouter account + API key
-- [ ] `.env`: `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` (a `:free` model)
-- [ ] Install `httpx`
-- [ ] `ai/client.py`: async wrapper (URL `https://openrouter.ai/api/v1/chat/completions`,
+- [x] Create OpenRouter account + API key
+- [x] `.env`: `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` (a `:free` model)
+- [x] Install `httpx`
+- [x] `ai/client.py`: async wrapper (URL `https://openrouter.ai/api/v1/chat/completions`,
       header `Authorization: Bearer <key>`); function takes messages, returns text
-- [ ] Make the client injectable so tests can override it (FastAPI dependency)
-- [ ] Temporary `GET /ai/ping` (protected) -> "Say hello in one word"
-- [ ] Error handling: missing key / rate limit / timeout do not crash the server
-- [ ] Add retry with backoff on 429/5xx
+- [x] Make the client injectable so tests can override it (FastAPI dependency)
+- [x] Temporary `GET /ai/ping` (protected) -> "Say hello in one word"
+- [x] Error handling: missing key / rate limit / timeout do not crash the server
+- [x] Add retry with backoff on 429/5xx
 
 ### Tests
-- [ ] With a **mocked** client, `/ai/ping` returns the canned response
-- [ ] Mocked rate-limit error -> graceful 503/handled response, no crash
+- [x] With a **mocked** client, `/ai/ping` returns the canned response
+- [x] Mocked rate-limit error -> graceful 503/handled response, no crash
 
 ### Definition of Done
 - `/ai/ping` returns a live response (manual check with real key)
@@ -337,7 +337,7 @@ text**. First-class feature, not just seeding.
 - [x] Phase 1 — Backend skeleton + /health
 - [x] Phase 2 — Auth + users (JWT, Alembic)
 - [x] Phase 3 — Knowledge base + plain-text editing (user-scoped)
-- [ ] Phase 4 — OpenRouter connection (mockable)
+- [x] Phase 4 — OpenRouter connection (mockable)
 - [ ] Phase 5 — Question generation
 - [ ] Phase 6 — Answer evaluation
 - [ ] Phase 7 — Sessions + persistence (user-scoped)

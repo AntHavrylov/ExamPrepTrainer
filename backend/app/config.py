@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     max_document_content_length: int = 20000
     max_sections_per_user: int = 50
 
+    openrouter_api_key: str = ""
+    openrouter_model: str = "openai/gpt-oss-120b:free"
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 
