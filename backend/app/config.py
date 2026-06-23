@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     openrouter_api_key: str = ""
     openrouter_model: str = "openai/gpt-oss-120b:free"
 
+    max_questions_per_generate: int = 20
+    max_generation_context_chars: int = 12000
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 

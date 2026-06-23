@@ -200,21 +200,21 @@ text**. First-class feature, not just seeding.
 **Goal:** AI generates questions from selected sections and task type.
 
 ### Subtasks
-- [ ] `ai/generate.py`: `generate_questions(sections, mode, count)`
-  - [ ] Gather content of the **current user's** selected sections
-  - [ ] Apply a token budget: truncate/limit content so the prompt can't overflow
-  - [ ] System prompt sets interviewer role; ask for **strict JSON** array of `{question, category}`
-- [ ] Safe JSON parsing (strip ```json fences, try/except, one retry on parse fail)
-- [ ] `POST /ai/generate` (protected): input `section_ids[]`, `mode`, `count`
-  - [ ] Validate all sections belong to the user
-  - [ ] Cap `count` (e.g. max 20) to control cost
-- [ ] Mode logic: technical / behavioral / mixed (~50/50)
+- [x] `ai/generate.py`: `generate_questions(sections, mode, count)`
+  - [x] Gather content of the **current user's** selected sections
+  - [x] Apply a token budget: truncate/limit content so the prompt can't overflow
+  - [x] System prompt sets interviewer role; ask for **strict JSON** array of `{question, category}`
+- [x] Safe JSON parsing (strip ```json fences, try/except, one retry on parse fail)
+- [x] `POST /ai/generate` (protected): input `section_ids[]`, `mode`, `count`
+  - [x] Validate all sections belong to the user
+  - [x] Cap `count` (e.g. max 20) to control cost
+- [x] Mode logic: technical / behavioral / mixed (~50/50)
 
 ### Tests
-- [ ] With mocked AI returning valid JSON -> parsed list of questions
-- [ ] Mocked AI returning JSON wrapped in prose/fences -> still parsed
-- [ ] Requesting another user's section -> 403/404
-- [ ] `count` over the cap -> 422
+- [x] With mocked AI returning valid JSON -> parsed list of questions
+- [x] Mocked AI returning JSON wrapped in prose/fences -> still parsed
+- [x] Requesting another user's section -> 403/404
+- [x] `count` over the cap -> 422
 
 ### Definition of Done
 - For a real section + `technical`, questions are relevant (manual check)
@@ -338,7 +338,7 @@ text**. First-class feature, not just seeding.
 - [x] Phase 2 — Auth + users (JWT, Alembic)
 - [x] Phase 3 — Knowledge base + plain-text editing (user-scoped)
 - [x] Phase 4 — OpenRouter connection (mockable)
-- [ ] Phase 5 — Question generation
+- [x] Phase 5 — Question generation
 - [ ] Phase 6 — Answer evaluation
 - [ ] Phase 7 — Sessions + persistence (user-scoped)
 - [ ] Phase 8 — React frontend with login

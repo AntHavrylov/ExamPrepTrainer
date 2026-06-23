@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -63,3 +64,14 @@ class DocumentRead(BaseModel):
 
 class SectionWithDocuments(SectionRead):
     documents: list[DocumentRead] = []
+
+
+class GenerateQuestionsRequest(BaseModel):
+    section_ids: list[int] = Field(min_length=1)
+    mode: Literal["technical", "behavioral", "mixed"] = "mixed"
+    count: int = Field(default=5, ge=1, le=settings.max_questions_per_generate)
+
+
+class QuestionRead(BaseModel):
+    question: str
+    category: str
