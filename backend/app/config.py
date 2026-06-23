@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     max_questions_per_generate: int = 20
     max_generation_context_chars: int = 12000
 
+    ai_rate_limit_max_requests: int = 30
+    ai_rate_limit_window_seconds: int = 60
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 

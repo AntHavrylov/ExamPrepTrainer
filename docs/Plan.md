@@ -346,7 +346,7 @@ only exists once Sessions/Attempts are persisted.
 - [ ] Progress stats: score chart, "weakest topics"
 - [x] Knowledge-base import: upload `.md`/`.txt` into a section
 - [x] Refresh tokens (longer sessions without re-login)
-- [ ] Per-user rate limiting on AI endpoints (cost/abuse control)
+- [x] Per-user rate limiting on AI endpoints (cost/abuse control)
 - [ ] RAG (embeddings + vector search) if the knowledge base outgrows the token budget
 
 ---

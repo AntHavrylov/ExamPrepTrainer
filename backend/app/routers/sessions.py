@@ -11,6 +11,7 @@ from app.config import settings
 from app.db import get_db
 from app.models import Attempt, User
 from app.models import Session as TrainingSession
+from app.rate_limit import check_ai_rate_limit, enforce_ai_rate_limit
 from app.schemas import (
     AnswerRequest,
     AnswerResultRead,
@@ -104,7 +105,7 @@ def start_session(
 async def next_question(
     session_id: int,
     db: DBSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(enforce_ai_rate_limit),
     ai_client: OpenRouterClient = Depends(get_ai_client),
 ) -> NextQuestionRead:
     session = _get_owned_session(db, session_id, current_user.id)
@@ -194,6 +195,8 @@ async def answer(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="answer is required for open-ended answers",
         )
+
+    check_ai_rate_limit(current_user.id)
 
     sections = get_owned_sections(db, session.section_ids, current_user.id)
     context = build_context(sections, settings.max_generation_context_chars)

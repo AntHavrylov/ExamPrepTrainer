@@ -5,10 +5,10 @@ from app.ai.client import AIClientError, OpenRouterClient, get_ai_client
 from app.ai.context import build_context
 from app.ai.evaluate import evaluate_answer
 from app.ai.generate import generate_questions
-from app.auth.deps import get_current_user
 from app.config import settings
 from app.db import get_db
 from app.models import User
+from app.rate_limit import enforce_ai_rate_limit
 from app.schemas import (
     EvaluateAnswerRequest,
     EvaluationRead,
@@ -22,7 +22,7 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 
 @router.get("/ping")
 async def ping(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(enforce_ai_rate_limit),
     ai_client: OpenRouterClient = Depends(get_ai_client),
 ) -> dict[str, str]:
     try:
@@ -36,7 +36,7 @@ async def ping(
 async def generate(
     payload: GenerateQuestionsRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(enforce_ai_rate_limit),
     ai_client: OpenRouterClient = Depends(get_ai_client),
 ) -> list[dict[str, str]]:
     sections = get_owned_sections(db, payload.section_ids, current_user.id)
@@ -51,7 +51,7 @@ async def generate(
 async def evaluate(
     payload: EvaluateAnswerRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(enforce_ai_rate_limit),
     ai_client: OpenRouterClient = Depends(get_ai_client),
 ) -> dict:
     sections = get_owned_sections(db, payload.section_ids, current_user.id)
