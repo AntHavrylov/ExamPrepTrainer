@@ -154,7 +154,7 @@ export default function TrainingScreen({ sessionId, onFinish }) {
           <button onClick={fetchNext} disabled={loading}>
             Next question
           </button>
-          <button onClick={onFinish} disabled={loading}>
+          <button className="btn-secondary" onClick={onFinish} disabled={loading}>
             Finish &amp; see summary
           </button>
         </div>

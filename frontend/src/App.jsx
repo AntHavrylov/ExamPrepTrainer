@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import './App.css'
+import ThemeToggle from './components/ThemeToggle'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import LoginScreen from './screens/LoginScreen'
 import SectionsScreen from './screens/SectionsScreen'
@@ -73,6 +74,7 @@ function AppShell() {
 export default function App() {
   return (
     <AuthProvider>
+      <ThemeToggle />
       <AppShell />
     </AuthProvider>
   )

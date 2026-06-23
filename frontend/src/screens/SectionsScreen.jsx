@@ -151,8 +151,12 @@ export default function SectionsScreen() {
               <li key={doc.id}>
                 <strong>{doc.title}</strong>
                 <p>{doc.content}</p>
-                <button onClick={() => startEditDocument(doc)}>Edit</button>
-                <button onClick={() => handleDeleteDocument(doc.id)}>Delete</button>
+                <button className="btn-secondary" onClick={() => startEditDocument(doc)}>
+                  Edit
+                </button>
+                <button className="btn-danger" onClick={() => handleDeleteDocument(doc.id)}>
+                  Delete
+                </button>
               </li>
             ))}
             {selectedSection.documents.length === 0 && <li>No notes yet.</li>}
@@ -174,7 +178,7 @@ export default function SectionsScreen() {
             />
             <button type="submit">{editingDocId ? 'Save changes' : 'Add notes'}</button>
             {editingDocId && (
-              <button type="button" onClick={resetDocForm}>
+              <button type="button" className="btn-secondary" onClick={resetDocForm}>
                 Cancel
               </button>
             )}

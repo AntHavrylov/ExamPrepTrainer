@@ -28,6 +28,7 @@ export default function LoginScreen() {
 
   return (
     <div className="auth-screen">
+      <h1 className="auth-title">Exam Prep Trainer</h1>
       <h2>{mode === 'login' ? 'Log in' : 'Register'}</h2>
       <form onSubmit={handleSubmit}>
         <label>
