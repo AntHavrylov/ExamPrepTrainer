@@ -40,3 +40,14 @@ def db_session():
 def client(db_session):
     with TestClient(app) as test_client:
         yield test_client
+
+
+@pytest.fixture()
+def make_user(client):
+    def _make_user(email: str, password: str = "password123") -> dict[str, str]:
+        client.post("/auth/register", json={"email": email, "password": password})
+        login = client.post("/auth/login", json={"email": email, "password": password})
+        token = login.json()["access_token"]
+        return {"Authorization": f"Bearer {token}"}
+
+    return _make_user

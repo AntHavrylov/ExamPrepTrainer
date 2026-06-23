@@ -143,24 +143,24 @@ models carry `user_id` from the start. Set up Alembic now.
 text**. First-class feature, not just seeding.
 
 ### Subtasks
-- [ ] `Section` model: `id`, `user_id (FK)`, `name`, `description`, `created_at`
-- [ ] `Document` model: `id`, `section_id (FK)`, `title`, `content (text)`, `updated_at`
-- [ ] Alembic migration for the new models
-- [ ] `routers/sections.py` (all under `get_current_user`, filtered by `user_id`):
-  - [ ] `POST /sections` — create section
-  - [ ] `GET /sections` — only own sections
-  - [ ] `GET /sections/{id}` — section with documents
-  - [ ] `POST /sections/{id}/documents` — add plain text
-  - [ ] `PUT /documents/{id}` — edit plain text
-  - [ ] `DELETE /documents/{id}` — delete fragment
-- [ ] Enforce ownership: accessing another user's section/document -> 403/404
-- [ ] Add input limits (max content length per document, max sections per user)
+- [x] `Section` model: `id`, `user_id (FK)`, `name`, `description`, `created_at`
+- [x] `Document` model: `id`, `section_id (FK)`, `title`, `content (text)`, `updated_at`
+- [x] Alembic migration for the new models
+- [x] `routers/sections.py` (all under `get_current_user`, filtered by `user_id`):
+  - [x] `POST /sections` — create section
+  - [x] `GET /sections` — only own sections
+  - [x] `GET /sections/{id}` — section with documents
+  - [x] `POST /sections/{id}/documents` — add plain text
+  - [x] `PUT /documents/{id}` — edit plain text
+  - [x] `DELETE /documents/{id}` — delete fragment
+- [x] Enforce ownership: accessing another user's section/document -> 403/404
+- [x] Add input limits (max content length per document, max sections per user)
 
 ### Tests
-- [ ] User A creates a section, adds text, edits it, deletes it
-- [ ] User B cannot see User A's sections (list is empty for B)
-- [ ] User B editing A's document -> 403/404
-- [ ] Oversized content -> 422
+- [x] User A creates a section, adds text, edits it, deletes it
+- [x] User B cannot see User A's sections (list is empty for B)
+- [x] User B editing A's document -> 403/404
+- [x] Oversized content -> 422
 
 ### Definition of Done
 - A logged-in user creates a section, pastes notes as text, then edits/appends
@@ -336,7 +336,7 @@ text**. First-class feature, not just seeding.
 
 - [x] Phase 1 — Backend skeleton + /health
 - [x] Phase 2 — Auth + users (JWT, Alembic)
-- [ ] Phase 3 — Knowledge base + plain-text editing (user-scoped)
+- [x] Phase 3 — Knowledge base + plain-text editing (user-scoped)
 - [ ] Phase 4 — OpenRouter connection (mockable)
 - [ ] Phase 5 — Question generation
 - [ ] Phase 6 — Answer evaluation
