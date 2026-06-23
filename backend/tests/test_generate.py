@@ -178,6 +178,41 @@ def test_build_context_respects_char_budget():
     assert len(context) <= 50
 
 
+def test_build_context_without_query_keeps_document_order_when_truncating():
+    section = Section(id=1, user_id=1, name="Notes")
+    section.documents = [
+        Document(id=1, section_id=1, title="First", content="x" * 100),
+        Document(id=2, section_id=1, title="Second", content="y" * 100),
+    ]
+
+    context = build_context([section], char_budget=40)
+
+    assert "First" in context
+    assert "Second" not in context
+
+
+def test_build_context_ranks_relevant_document_first_when_truncating():
+    section = Section(id=1, user_id=1, name="Notes")
+    section.documents = [
+        Document(id=1, section_id=1, title="Irrelevant", content="banana bread recipe " * 20),
+        Document(id=2, section_id=1, title="Relevant", content="python asyncio event loop " * 20),
+    ]
+
+    context = build_context([section], char_budget=80, query="explain python asyncio")
+
+    assert "Relevant" in context
+    assert "Irrelevant" not in context
+
+
+def test_build_context_with_query_is_unchanged_when_everything_fits():
+    section = Section(id=1, user_id=1, name="Notes")
+    section.documents = [Document(id=1, section_id=1, title="Doc", content="short content")]
+
+    context = build_context([section], char_budget=1000, query="irrelevant query terms")
+
+    assert context == "## Section: Notes\n### Doc\nshort content\n"
+
+
 def _make_section() -> Section:
     section = Section(id=1, user_id=1, name="Python")
     section.documents = [Document(id=1, section_id=1, title="Notes", content="Some Python notes.")]

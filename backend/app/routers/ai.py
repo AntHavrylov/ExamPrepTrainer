@@ -55,7 +55,9 @@ async def evaluate(
     ai_client: OpenRouterClient = Depends(get_ai_client),
 ) -> dict:
     sections = get_owned_sections(db, payload.section_ids, current_user.id)
-    context = build_context(sections, settings.max_generation_context_chars)
+    context = build_context(
+        sections, settings.max_generation_context_chars, query=f"{payload.question} {payload.answer}"
+    )
 
     try:
         return await evaluate_answer(payload.question, payload.answer, context, ai_client)

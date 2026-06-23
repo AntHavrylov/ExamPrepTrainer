@@ -55,7 +55,7 @@ async def generate_questions(
     ai_client: OpenRouterClient | None = None,
 ) -> list[dict[str, str]]:
     client = ai_client or get_ai_client()
-    context = build_context(sections, settings.max_generation_context_chars)
+    context = build_context(sections, settings.max_generation_context_chars, query=MODE_INSTRUCTIONS[mode])
 
     user_prompt = (
         f"Knowledge base content:\n{context}\n\n"
@@ -120,7 +120,7 @@ async def generate_quiz_questions(
     ai_client: OpenRouterClient | None = None,
 ) -> list[dict]:
     client = ai_client or get_ai_client()
-    context = build_context(sections, settings.max_generation_context_chars)
+    context = build_context(sections, settings.max_generation_context_chars, query=MODE_INSTRUCTIONS[mode])
 
     user_prompt = (
         f"Knowledge base content:\n{context}\n\n"

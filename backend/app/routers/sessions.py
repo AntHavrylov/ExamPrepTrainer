@@ -199,7 +199,9 @@ async def answer(
     check_ai_rate_limit(current_user.id)
 
     sections = get_owned_sections(db, session.section_ids, current_user.id)
-    context = build_context(sections, settings.max_generation_context_chars)
+    context = build_context(
+        sections, settings.max_generation_context_chars, query=f"{attempt.question} {payload.answer}"
+    )
 
     try:
         evaluation = await evaluate_answer(attempt.question, payload.answer, context, ai_client)

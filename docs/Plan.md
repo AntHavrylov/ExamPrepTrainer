@@ -347,7 +347,7 @@ only exists once Sessions/Attempts are persisted.
 - [x] Knowledge-base import: upload `.md`/`.txt` into a section
 - [x] Refresh tokens (longer sessions without re-login)
 - [x] Per-user rate limiting on AI endpoints (cost/abuse control)
-- [ ] RAG (embeddings + vector search) if the knowledge base outgrows the token budget
+- [x] RAG (scoped down: lightweight keyword-relevance ranking of document chunks when content exceeds the token budget, instead of embeddings + vector search)
 
 ---
 
