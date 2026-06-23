@@ -262,43 +262,43 @@ answer from the client until it's submitted requires server-side state — which
 only exists once Sessions/Attempts are persisted.
 
 ### Subtasks
-- [ ] `Session` model: `id`, `user_id (FK)`, `mode`, `format` (`open_ended` | `quiz`),
+- [x] `Session` model: `id`, `user_id (FK)`, `mode`, `format` (`open_ended` | `quiz`),
       `section_ids`, `started_at`, `finished_at`
-- [ ] `Attempt` model: `id`, `session_id (FK)`, `question`, `category`, `format`,
+- [x] `Attempt` model: `id`, `session_id (FK)`, `question`, `category`, `format`,
       `options` (JSON list, quiz only), `correct_index` (quiz only — **never**
       serialized in any response before the answer is submitted), `selected_index`
       (quiz only), `answer` (free text, open-ended only), `score`, `feedback`,
       `created_at`
-- [ ] Alembic migration for the new models
-- [ ] `ai/generate.py`: `generate_quiz_questions(sections, mode, count)` — reuses
+- [x] Alembic migration for the new models
+- [x] `ai/generate.py`: `generate_quiz_questions(sections, mode, count)` — reuses
       the same char-budgeted `build_context` and mode instructions as
       `generate_questions`, but the strict-JSON schema is
       `{question, category, options: [4 strings], correct_index: 0-3}`; reuse the
       shared JSON-parsing helper and the one-retry-on-parse-fail behavior
-- [ ] `routers/sessions.py` (all under `get_current_user`, filtered by `user_id`):
-  - [ ] `POST /sessions` — start a session; input `section_ids[]`, `mode`, `format`
-  - [ ] `POST /sessions/{id}/next` — generate the next question via
+- [x] `routers/sessions.py` (all under `get_current_user`, filtered by `user_id`):
+  - [x] `POST /sessions` — start a session; input `section_ids[]`, `mode`, `format`
+  - [x] `POST /sessions/{id}/next` — generate the next question via
         `generate_questions` (open-ended) or `generate_quiz_questions` (quiz)
         depending on the session's `format`; for quiz, store `correct_index`
         server-side and respond with only `{question, category, options}` —
         no answer key
-  - [ ] `POST /sessions/{id}/answer`:
+  - [x] `POST /sessions/{id}/answer`:
         - open-ended: body has free-text `answer` -> `evaluate_answer` -> store
           score/feedback
         - quiz: body has `selected_index` -> compare against the stored
           `correct_index` (deterministic, no AI call) -> score 10/0 + feedback
           that reveals the correct option
-  - [ ] `GET /sessions/{id}` — session summary (includes correct answers for any
+  - [x] `GET /sessions/{id}` — session summary (includes correct answers for any
         quiz attempts already submitted)
-  - [ ] `GET /sessions` — own session history (paginated)
-- [ ] Prevent duplicate scoring on double-submit (idempotency per attempt)
+  - [x] `GET /sessions` — own session history (paginated)
+- [x] Prevent duplicate scoring on double-submit (idempotency per attempt)
 
 ### Tests
-- [ ] Full open-ended cycle (mocked AI): start -> next -> answer -> stored attempt with score
-- [ ] Full quiz cycle (mocked AI): start -> next (response has no `correct_index`/
+- [x] Full open-ended cycle (mocked AI): start -> next -> answer -> stored attempt with score
+- [x] Full quiz cycle (mocked AI): start -> next (response has no `correct_index`/
       answer field) -> answer with the correct index -> score 10; wrong index -> score 0
-- [ ] User sees only their own sessions
-- [ ] Double-submitting the same answer doesn't double-score (both formats)
+- [x] User sees only their own sessions
+- [x] Double-submitting the same answer doesn't double-score (both formats)
 
 ### Definition of Done
 - Full loop works via `/docs` for **both** formats: login -> start -> question ->
@@ -377,7 +377,7 @@ only exists once Sessions/Attempts are persisted.
 - [x] Phase 4 — OpenRouter connection (mockable)
 - [x] Phase 5 — Question generation
 - [x] Phase 6 — Answer evaluation
-- [ ] Phase 7 — Sessions + persistence (user-scoped, open-ended + quiz)
+- [x] Phase 7 — Sessions + persistence (user-scoped, open-ended + quiz)
 - [ ] Phase 8 — React frontend with login
 - [ ] Phase 9 — Polish
 - [ ] Phase 10 — Deploy

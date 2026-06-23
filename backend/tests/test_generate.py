@@ -1,7 +1,11 @@
+import asyncio
 import json
 
-from app.ai.client import get_ai_client
+import pytest
+
+from app.ai.client import AIClientError, get_ai_client
 from app.ai.context import build_context
+from app.ai.generate import generate_quiz_questions
 from app.config import settings
 from app.main import app
 from app.models import Document, Section
@@ -172,3 +176,77 @@ def test_build_context_respects_char_budget():
     context = build_context([section], char_budget=50)
 
     assert len(context) <= 50
+
+
+def _make_section() -> Section:
+    section = Section(id=1, user_id=1, name="Python")
+    section.documents = [Document(id=1, section_id=1, title="Notes", content="Some Python notes.")]
+    return section
+
+
+def test_generate_quiz_questions_parses_valid_json():
+    valid_json = json.dumps(
+        [
+            {
+                "question": "Which keyword defines a coroutine?",
+                "category": "technical",
+                "options": ["def", "async def", "coroutine", "await"],
+                "correct_index": 1,
+            }
+        ]
+    )
+    stub = _StubAIClient(valid_json)
+    result = asyncio.run(generate_quiz_questions([_make_section()], "technical", 1, stub))
+
+    assert result == [
+        {
+            "question": "Which keyword defines a coroutine?",
+            "category": "technical",
+            "options": ["def", "async def", "coroutine", "await"],
+            "correct_index": 1,
+        }
+    ]
+
+
+def test_generate_quiz_questions_parses_json_wrapped_in_prose_and_fences():
+    messy = (
+        "Here you go:\n"
+        "```json\n"
+        '[{"question": "What is PEP 8?", "category": "technical", '
+        '"options": ["A style guide", "A package manager", "A web framework", "A test runner"], '
+        '"correct_index": 0}]\n'
+        "```\n"
+        "Enjoy!"
+    )
+    stub = _StubAIClient(messy)
+    result = asyncio.run(generate_quiz_questions([_make_section()], "technical", 1, stub))
+
+    assert result[0]["question"] == "What is PEP 8?"
+    assert result[0]["correct_index"] == 0
+
+
+def test_generate_quiz_questions_retries_once_on_malformed_item():
+    malformed = json.dumps(
+        [{"question": "Bad", "category": "technical", "options": ["only", "two"], "correct_index": 0}]
+    )
+    good = json.dumps(
+        [
+            {
+                "question": "Good",
+                "category": "technical",
+                "options": ["a", "b", "c", "d"],
+                "correct_index": 2,
+            }
+        ]
+    )
+    stub = _FlakyJSONAIClient(malformed, good)
+    result = asyncio.run(generate_quiz_questions([_make_section()], "technical", 1, stub))
+
+    assert stub.calls == 2
+    assert result[0]["question"] == "Good"
+
+
+def test_generate_quiz_questions_fails_gracefully_when_never_valid():
+    stub = _FlakyJSONAIClient("not json", "still not json")
+    with pytest.raises(AIClientError):
+        asyncio.run(generate_quiz_questions([_make_section()], "technical", 1, stub))

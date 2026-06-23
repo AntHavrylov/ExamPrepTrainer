@@ -88,3 +88,62 @@ class EvaluationRead(BaseModel):
     feedback: str
     strengths: list[str]
     gaps: list[str]
+
+
+class StartSessionRequest(BaseModel):
+    section_ids: list[int] = Field(min_length=1)
+    mode: Literal["technical", "behavioral", "mixed"] = "mixed"
+    format: Literal["open_ended", "quiz"] = "open_ended"
+
+
+class SessionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    mode: str
+    format: str
+    section_ids: list[int]
+    started_at: datetime
+    finished_at: datetime | None
+
+
+class NextQuestionRead(BaseModel):
+    attempt_id: int
+    question: str
+    category: str
+    options: list[str] | None = None
+
+
+class AnswerRequest(BaseModel):
+    answer: str | None = Field(default=None, min_length=1)
+    selected_index: int | None = Field(default=None, ge=0)
+
+
+class AnswerResultRead(BaseModel):
+    attempt_id: int
+    format: str
+    score: int
+    feedback: str
+    strengths: list[str] = []
+    gaps: list[str] = []
+    correct_index: int | None = None
+    is_correct: bool | None = None
+
+
+class AttemptSummaryRead(BaseModel):
+    id: int
+    question: str
+    category: str
+    format: str
+    options: list[str] | None = None
+    selected_index: int | None = None
+    correct_index: int | None = None
+    answer: str | None = None
+    score: int | None = None
+    feedback: str | None = None
+    created_at: datetime
+
+
+class SessionSummaryRead(SessionRead):
+    attempts: list[AttemptSummaryRead] = []
+    average_score: float | None = None

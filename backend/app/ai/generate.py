@@ -19,6 +19,18 @@ SYSTEM_PROMPT = (
     "outside the JSON array."
 )
 
+QUIZ_SYSTEM_PROMPT = (
+    "You are an experienced interviewer preparing a multiple-choice quiz for a "
+    "candidate's job interview prep. Generate multiple-choice questions based ONLY "
+    "on the knowledge-base content the user provides. Respond with STRICT JSON "
+    'ONLY: a JSON array of objects, each with exactly four fields: "question" '
+    '(string), "category" (either "technical" or "behavioral"), "options" (an '
+    'array of exactly 4 short string choices), and "correct_index" (an integer '
+    '0-3, the index of the correct option in "options"). Exactly one option must '
+    "be correct. Do not include any prose, explanation, or markdown fences "
+    "outside the JSON array."
+)
+
 
 def _parse_questions(raw: str) -> list[dict[str, str]] | None:
     data = extract_json_value(raw, "[", "]")
@@ -60,6 +72,71 @@ async def generate_questions(
     if questions is None:
         raw = await client.complete(messages)
         questions = _parse_questions(raw)
+    if questions is None:
+        raise AIClientError("Could not parse AI response as JSON")
+    return questions
+
+
+def _parse_quiz_questions(raw: str) -> list[dict] | None:
+    data = extract_json_value(raw, "[", "]")
+    if not isinstance(data, list):
+        return None
+
+    questions: list[dict] = []
+    for item in data:
+        if not isinstance(item, dict):
+            return None
+        question = item.get("question")
+        category = item.get("category")
+        options = item.get("options")
+        correct_index = item.get("correct_index")
+
+        if not isinstance(question, str) or not isinstance(category, str):
+            return None
+        if not isinstance(options, list) or len(options) != 4:
+            return None
+        if not all(isinstance(opt, str) for opt in options):
+            return None
+        if not isinstance(correct_index, int) or isinstance(correct_index, bool):
+            return None
+        if not (0 <= correct_index < len(options)):
+            return None
+
+        questions.append(
+            {
+                "question": question,
+                "category": category,
+                "options": options,
+                "correct_index": correct_index,
+            }
+        )
+    return questions
+
+
+async def generate_quiz_questions(
+    sections: list[Section],
+    mode: str,
+    count: int,
+    ai_client: OpenRouterClient | None = None,
+) -> list[dict]:
+    client = ai_client or get_ai_client()
+    context = build_context(sections, settings.max_generation_context_chars)
+
+    user_prompt = (
+        f"Knowledge base content:\n{context}\n\n"
+        f"Generate exactly {count} multiple-choice interview questions. {MODE_INSTRUCTIONS[mode]}\n"
+        "Respond with a strict JSON array only, no prose, no markdown fences."
+    )
+    messages = [
+        {"role": "system", "content": QUIZ_SYSTEM_PROMPT},
+        {"role": "user", "content": user_prompt},
+    ]
+
+    raw = await client.complete(messages)
+    questions = _parse_quiz_questions(raw)
+    if questions is None:
+        raw = await client.complete(messages)
+        questions = _parse_quiz_questions(raw)
     if questions is None:
         raise AIClientError("Could not parse AI response as JSON")
     return questions
