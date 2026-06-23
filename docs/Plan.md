@@ -375,10 +375,10 @@ which also reverse-proxies API paths to the backend — mirroring
       overridden to Postgres), `frontend` (depends on backend)
 
 ### Tests / Verification
-- [ ] `docker compose up --build` starts all 3 services without errors
-- [ ] `curl http://localhost:8000/health` -> `{"status":"ok"}` (backend direct)
-- [ ] `curl http://localhost:8080/health` -> same, via the Nginx proxy
-- [ ] Alembic creates tables in the Postgres container
+- [x] `docker compose up --build` starts all 3 services without errors
+- [x] `curl http://localhost:8000/health` -> `{"status":"ok"}` (backend direct)
+- [x] `curl http://localhost:8080/health` -> same, via the Nginx proxy
+- [x] Alembic creates tables in the Postgres container
 - [ ] Full browser flow against the containers: register -> login -> create
       section -> add text -> train -> answer -> score -> summary
 - [ ] `docker compose down -v` then `up --build` again works from a clean volume
