@@ -144,3 +144,25 @@ def test_list_models_is_cached_across_requests(client, make_user):
     client.get("/settings/models", headers=headers)
 
     assert calls["n"] == 1
+
+
+def test_update_language_requires_auth(client):
+    response = client.put("/settings/language", json={"language": "uk"})
+    assert response.status_code == 401
+
+
+def test_update_language_persists_and_is_reflected_in_me(client, make_user):
+    headers = make_user("settings-language@example.com")
+
+    response = client.put("/settings/language", json={"language": "uk"}, headers=headers)
+    assert response.status_code == 200
+    assert response.json()["language"] == "uk"
+
+    me = client.get("/auth/me", headers=headers)
+    assert me.json()["language"] == "uk"
+
+
+def test_update_language_rejects_unsupported_language(client, make_user):
+    headers = make_user("settings-language-invalid@example.com")
+    response = client.put("/settings/language", json={"language": "fr"}, headers=headers)
+    assert response.status_code == 422

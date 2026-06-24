@@ -279,6 +279,31 @@ def test_different_difficulty_does_not_share_pool(client, make_user, monkeypatch
     assert stub.calls == 2
 
 
+def test_different_language_does_not_share_pool(client, make_user, monkeypatch):
+    monkeypatch.setattr(settings, "question_bank_batch_size", 1)
+    headers = make_user("bank-language-split@example.com")
+    section_id = _create_section_with_document(client, headers)
+
+    en_json = json.dumps([_open_ended_item("What is the GIL?", "python gil")])
+    uk_json = json.dumps([_open_ended_item("Що таке GIL?", "python gil")])
+    stub = _StubAIClient(en_json)
+    _override_ai_client(stub)
+    try:
+        session_en = _start_session(client, headers, [section_id])
+        client.post(f"/sessions/{session_en}/next", headers=headers)
+
+        language_response = client.put("/settings/language", json={"language": "uk"}, headers=headers)
+        assert language_response.status_code == 200
+
+        stub.response_text = uk_json
+        session_uk = _start_session(client, headers, [section_id])
+        client.post(f"/sessions/{session_uk}/next", headers=headers)
+    finally:
+        _clear_ai_override()
+
+    assert stub.calls == 2
+
+
 def test_next_question_exposes_hint_but_not_explanation(client, make_user, monkeypatch):
     monkeypatch.setattr(settings, "question_bank_batch_size", 1)
     headers = make_user("bank-hint-no-leak@example.com")

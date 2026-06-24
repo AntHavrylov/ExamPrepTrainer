@@ -16,6 +16,8 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    language: Mapped[str] = mapped_column(String(10), nullable=False, default="en")
+    session_length: Mapped[int] = mapped_column(default=5)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
@@ -76,6 +78,7 @@ class Session(Base):
     mode: Mapped[str] = mapped_column(String(20), nullable=False)
     format: Mapped[str] = mapped_column(String(20), nullable=False)
     difficulty: Mapped[str] = mapped_column(String(20), nullable=False, default="medium")
+    target_question_count: Mapped[int] = mapped_column(default=5)
     section_ids: Mapped[list[int]] = mapped_column(JSON, nullable=False)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -110,6 +113,7 @@ class QuestionBank(Base):
     mode: Mapped[str] = mapped_column(String(20), nullable=False)
     format: Mapped[str] = mapped_column(String(20), nullable=False)
     difficulty: Mapped[str] = mapped_column(String(20), nullable=False, default="medium")
+    language: Mapped[str] = mapped_column(String(10), nullable=False, default="en")
     section_ids: Mapped[list[int]] = mapped_column(JSON, nullable=False)
     theme: Mapped[str] = mapped_column(String(255), nullable=False)
     question: Mapped[str] = mapped_column(Text, nullable=False)

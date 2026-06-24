@@ -5,7 +5,7 @@ import pytest
 
 from app.ai.client import AIClientError, get_ai_client
 from app.ai.context import build_context
-from app.ai.generate import generate_quiz_questions
+from app.ai.generate import generate_questions, generate_quiz_questions
 from app.config import settings
 from app.main import app
 from app.models import Document, Section
@@ -18,6 +18,16 @@ class _StubAIClient:
 
     async def complete(self, messages: list[dict[str, str]]) -> str:
         self.calls += 1
+        return self.response_text
+
+
+class _RecordingAIClient:
+    def __init__(self, response_text: str):
+        self.response_text = response_text
+        self.messages: list[dict[str, str]] | None = None
+
+    async def complete(self, messages: list[dict[str, str]]) -> str:
+        self.messages = messages
         return self.response_text
 
 
@@ -319,3 +329,64 @@ def test_generate_quiz_questions_fails_gracefully_when_never_valid():
     stub = _FlakyJSONAIClient("not json", "still not json")
     with pytest.raises(AIClientError):
         asyncio.run(generate_quiz_questions([_make_section()], "technical", 1, stub))
+
+
+def test_generate_questions_defaults_to_english_with_no_language_instruction_needed():
+    valid_json = json.dumps(
+        [
+            {
+                "question": "Q1",
+                "category": "technical",
+                "theme": "general",
+                "hint": "A nudge.",
+                "explanation": "An explanation.",
+            }
+        ]
+    )
+    stub = _RecordingAIClient(valid_json)
+    asyncio.run(generate_questions([_make_section()], "technical", 1, stub))
+
+    user_message = stub.messages[1]["content"]
+    assert "Write all natural-language text" in user_message
+    assert "English" in user_message
+    assert '"category" field must still be exactly "technical" or "behavioral" in English' in user_message
+
+
+def test_generate_questions_includes_ukrainian_language_instruction():
+    valid_json = json.dumps(
+        [
+            {
+                "question": "Q1",
+                "category": "technical",
+                "theme": "general",
+                "hint": "A nudge.",
+                "explanation": "An explanation.",
+            }
+        ]
+    )
+    stub = _RecordingAIClient(valid_json)
+    asyncio.run(generate_questions([_make_section()], "technical", 1, stub, language="uk"))
+
+    user_message = stub.messages[1]["content"]
+    assert "Ukrainian" in user_message
+
+
+def test_generate_quiz_questions_includes_russian_language_instruction():
+    valid_json = json.dumps(
+        [
+            {
+                "question": "Q1",
+                "category": "technical",
+                "options": ["a", "b", "c", "d"],
+                "correct_index": 0,
+                "theme": "general",
+                "hint": "A nudge.",
+                "explanation": "An explanation.",
+            }
+        ]
+    )
+    stub = _RecordingAIClient(valid_json)
+    asyncio.run(generate_quiz_questions([_make_section()], "technical", 1, stub, language="ru"))
+
+    user_message = stub.messages[1]["content"]
+    assert "Russian" in user_message

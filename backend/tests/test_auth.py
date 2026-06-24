@@ -10,6 +10,28 @@ def test_register_returns_201(client):
     assert "hashed_password" not in body
 
 
+def test_register_defaults_language_to_english(client):
+    response = client.post("/auth/register", json={"email": "lang-default@example.com", "password": "supersecret"})
+    assert response.json()["language"] == "en"
+
+
+def test_register_accepts_explicit_language(client):
+    response = client.post(
+        "/auth/register",
+        json={"email": "lang-uk@example.com", "password": "supersecret", "language": "uk"},
+    )
+    assert response.status_code == 201
+    assert response.json()["language"] == "uk"
+
+
+def test_register_rejects_unsupported_language(client):
+    response = client.post(
+        "/auth/register",
+        json={"email": "lang-bad@example.com", "password": "supersecret", "language": "fr"},
+    )
+    assert response.status_code == 422
+
+
 def test_register_duplicate_email_returns_409(client):
     client.post("/auth/register", json={"email": "dup@example.com", "password": "supersecret"})
     response = client.post("/auth/register", json={"email": "dup@example.com", "password": "other-pass"})

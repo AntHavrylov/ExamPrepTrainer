@@ -17,6 +17,22 @@ DIFFICULTY_INSTRUCTIONS = {
     "hard": "Make questions challenging, probing edge cases, trade-offs, and deeper understanding.",
 }
 
+LANGUAGE_NAMES = {
+    "en": "English",
+    "uk": "Ukrainian",
+    "ru": "Russian",
+}
+
+
+def _language_line(language: str) -> str:
+    name = LANGUAGE_NAMES.get(language, LANGUAGE_NAMES["en"])
+    return (
+        f"Write all natural-language text (question, options if present, theme, "
+        f"hint, and explanation) in {name}. The \"category\" field must still be "
+        'exactly "technical" or "behavioral" in English, regardless of the '
+        "response language.\n"
+    )
+
 SYSTEM_PROMPT = (
     "You are an experienced interviewer preparing a candidate for a job interview. "
     "Generate interview questions based ONLY on the knowledge-base content the user "
@@ -89,6 +105,7 @@ async def generate_questions(
     ai_client: AIProvider,
     difficulty: str = "medium",
     avoid_themes: list[str] | None = None,
+    language: str = "en",
 ) -> list[dict[str, str]]:
     context = build_context(sections, settings.max_generation_context_chars, query=MODE_INSTRUCTIONS[mode])
 
@@ -97,6 +114,7 @@ async def generate_questions(
         f"Generate exactly {count} interview questions. {MODE_INSTRUCTIONS[mode]} "
         f"{DIFFICULTY_INSTRUCTIONS[difficulty]}\n"
         f"{_avoid_themes_line(avoid_themes)}"
+        f"{_language_line(language)}"
         "Respond with a strict JSON array only, no prose, no markdown fences."
     )
     messages = [
@@ -165,6 +183,7 @@ async def generate_quiz_questions(
     ai_client: AIProvider,
     difficulty: str = "medium",
     avoid_themes: list[str] | None = None,
+    language: str = "en",
 ) -> list[dict]:
     context = build_context(sections, settings.max_generation_context_chars, query=MODE_INSTRUCTIONS[mode])
 
@@ -173,6 +192,7 @@ async def generate_quiz_questions(
         f"Generate exactly {count} multiple-choice interview questions. {MODE_INSTRUCTIONS[mode]} "
         f"{DIFFICULTY_INSTRUCTIONS[difficulty]}\n"
         f"{_avoid_themes_line(avoid_themes)}"
+        f"{_language_line(language)}"
         "Respond with a strict JSON array only, no prose, no markdown fences."
     )
     messages = [

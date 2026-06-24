@@ -58,7 +58,11 @@ def register(payload: UserCreate, db: Session = Depends(get_db)) -> User:
     if existing is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
 
-    user = User(email=payload.email, hashed_password=hash_password(payload.password))
+    user = User(
+        email=payload.email,
+        hashed_password=hash_password(payload.password),
+        language=payload.language,
+    )
     db.add(user)
     db.commit()
     db.refresh(user)

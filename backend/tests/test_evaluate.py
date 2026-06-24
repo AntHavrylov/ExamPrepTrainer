@@ -4,7 +4,12 @@ import json
 import pytest
 
 from app.ai.client import AIClientError, get_ai_client
-from app.ai.evaluate import _coerce_score, _parse_stream_evaluation, evaluate_answer_stream
+from app.ai.evaluate import (
+    _coerce_score,
+    _parse_stream_evaluation,
+    evaluate_answer,
+    evaluate_answer_stream,
+)
 from app.main import app
 
 
@@ -17,6 +22,16 @@ class _StubAIClient:
     async def complete(self, messages: list[dict[str, str]], temperature: float | None = None) -> str:
         self.calls += 1
         self.last_temperature = temperature
+        return self.response_text
+
+
+class _RecordingAIClient:
+    def __init__(self, response_text: str):
+        self.response_text = response_text
+        self.messages: list[dict[str, str]] | None = None
+
+    async def complete(self, messages: list[dict[str, str]], temperature: float | None = None) -> str:
+        self.messages = messages
         return self.response_text
 
 
@@ -216,8 +231,10 @@ class _StubStreamingAIClient:
         self.chunks = chunks
         self.fallback_response = fallback_response
         self.complete_calls = 0
+        self.messages: list[dict[str, str]] | None = None
 
     async def stream_complete(self, messages, temperature=None):
+        self.messages = messages
         for chunk in self.chunks:
             yield chunk
 
@@ -226,10 +243,10 @@ class _StubStreamingAIClient:
         return self.fallback_response or ""
 
 
-async def _run_stream(stub):
+async def _run_stream(stub, language: str = "en"):
     deltas = []
     result = None
-    async for delta, evaluation in evaluate_answer_stream("Q", "A", "context", stub):
+    async for delta, evaluation in evaluate_answer_stream("Q", "A", "context", stub, language=language):
         if delta is not None:
             deltas.append(delta)
         if evaluation is not None:
@@ -264,3 +281,33 @@ def test_evaluate_answer_stream_raises_when_unparseable_even_after_retry():
 
     with pytest.raises(AIClientError):
         asyncio.run(_run_stream(stub))
+
+
+def test_evaluate_answer_defaults_to_english_language_instruction():
+    response = json.dumps({"score": 5, "feedback": "x", "strengths": [], "gaps": []})
+    stub = _RecordingAIClient(response)
+    asyncio.run(evaluate_answer("Q", "A", "context", stub))
+
+    user_message = stub.messages[1]["content"]
+    assert "Write the feedback text" in user_message
+    assert "English" in user_message
+
+
+def test_evaluate_answer_includes_ukrainian_language_instruction():
+    response = json.dumps({"score": 5, "feedback": "x", "strengths": [], "gaps": []})
+    stub = _RecordingAIClient(response)
+    asyncio.run(evaluate_answer("Q", "A", "context", stub, language="uk"))
+
+    user_message = stub.messages[1]["content"]
+    assert "Ukrainian" in user_message
+
+
+def test_evaluate_answer_stream_includes_russian_language_instruction_but_keeps_labels_english():
+    chunks = ["SCORE: 7\n", "FEEDBACK: Good answer.\n", "STRENGTHS:\n- clear\nGAPS:\n- depth\n"]
+    stub = _StubStreamingAIClient(chunks)
+
+    asyncio.run(_run_stream(stub, language="ru"))
+
+    user_message = stub.messages[1]["content"]
+    assert "Russian" in user_message
+    assert '"SCORE:"/"FEEDBACK:"/"STRENGTHS:"/"GAPS:"' in user_message

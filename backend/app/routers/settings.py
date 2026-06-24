@@ -8,7 +8,14 @@ from app.ai.provider import AIProvider, ModelInfo
 from app.auth.deps import get_current_user
 from app.db import get_db
 from app.models import User
-from app.schemas import ApiKeySaveRequest, ApiKeyStatusRead, ModelOption
+from app.schemas import (
+    ApiKeySaveRequest,
+    ApiKeyStatusRead,
+    LanguageUpdate,
+    ModelOption,
+    SessionLengthUpdate,
+    UserRead,
+)
 from app.user_api_keys import delete_user_api_key, get_user_api_key_row, save_user_api_key
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -74,3 +81,27 @@ def remove_api_key(
     current_user: User = Depends(get_current_user),
 ) -> None:
     delete_user_api_key(db, current_user.id)
+
+
+@router.put("/language", response_model=UserRead)
+def update_language(
+    payload: LanguageUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> User:
+    current_user.language = payload.language
+    db.commit()
+    db.refresh(current_user)
+    return current_user
+
+
+@router.put("/session-length", response_model=UserRead)
+def update_session_length(
+    payload: SessionLengthUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> User:
+    current_user.session_length = payload.session_length
+    db.commit()
+    db.refresh(current_user)
+    return current_user

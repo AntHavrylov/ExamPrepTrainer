@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DBSession
 
 from app.ai.client import AIClientError, MissingApiKeyError, get_ai_client
@@ -33,6 +33,25 @@ from app.section_access import get_owned_sections
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
+_QUIZ_CORRECT_FEEDBACK = {
+    "en": "Correct!",
+    "uk": "Правильно!",
+    "ru": "Правильно!",
+}
+
+_QUIZ_INCORRECT_FEEDBACK_TEMPLATES = {
+    "en": "Incorrect. The correct answer was: {answer}",
+    "uk": "Неправильно. Правильна відповідь: {answer}",
+    "ru": "Неправильно. Правильный ответ: {answer}",
+}
+
+
+def _quiz_feedback(language: str, is_correct: bool, correct_option: str) -> str:
+    if is_correct:
+        return _QUIZ_CORRECT_FEEDBACK.get(language, _QUIZ_CORRECT_FEEDBACK["en"])
+    template = _QUIZ_INCORRECT_FEEDBACK_TEMPLATES.get(language, _QUIZ_INCORRECT_FEEDBACK_TEMPLATES["en"])
+    return template.format(answer=correct_option)
+
 
 def _get_owned_session(db: DBSession, session_id: int, user_id: int) -> TrainingSession:
     session = db.get(TrainingSession, session_id)
@@ -47,12 +66,22 @@ def _latest_attempt(db: DBSession, session_id: int) -> Attempt | None:
     )
 
 
+def _attempt_count(db: DBSession, session_id: int) -> int:
+    return db.scalar(select(func.count()).select_from(Attempt).where(Attempt.session_id == session_id)) or 0
+
+
 def _scope_key(section_ids: list[int]) -> list[int]:
     return sorted(set(section_ids))
 
 
 def _matching_bank_rows(
-    db: DBSession, user_id: int, mode: str, format_: str, difficulty: str, scope: list[int]
+    db: DBSession,
+    user_id: int,
+    mode: str,
+    format_: str,
+    difficulty: str,
+    language: str,
+    scope: list[int],
 ) -> list[QuestionBank]:
     candidates = db.scalars(
         select(QuestionBank).where(
@@ -60,6 +89,7 @@ def _matching_bank_rows(
             QuestionBank.mode == mode,
             QuestionBank.format == format_,
             QuestionBank.difficulty == difficulty,
+            QuestionBank.language == language,
         )
     )
     return [row for row in candidates if _scope_key(row.section_ids) == scope]
@@ -124,11 +154,26 @@ def start_session(
         mode=payload.mode,
         format=payload.format,
         difficulty=payload.difficulty,
+        target_question_count=current_user.session_length,
         section_ids=payload.section_ids,
     )
     db.add(session)
     db.commit()
     db.refresh(session)
+    return session
+
+
+@router.post("/{session_id}/finish", response_model=SessionRead)
+def finish_session(
+    session_id: int,
+    db: DBSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> TrainingSession:
+    session = _get_owned_session(db, session_id, current_user.id)
+    if session.finished_at is None:
+        session.finished_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(session)
     return session
 
 
@@ -140,10 +185,21 @@ async def next_question(
     ai_client: AIProvider = Depends(get_ai_client),
 ) -> NextQuestionRead:
     session = _get_owned_session(db, session_id, current_user.id)
+    if session.finished_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Session has already been finished"
+        )
+
+    existing_count = _attempt_count(db, session.id)
+    if existing_count >= session.target_question_count:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Session already has the configured number of questions",
+        )
     scope = _scope_key(session.section_ids)
 
     matching = _matching_bank_rows(
-        db, current_user.id, session.mode, session.format, session.difficulty, scope
+        db, current_user.id, session.mode, session.format, session.difficulty, current_user.language, scope
     )
     candidate = next((row for row in matching if row.used_at is None), None)
 
@@ -159,6 +215,7 @@ async def next_question(
                     ai_client,
                     difficulty=session.difficulty,
                     avoid_themes=avoid_themes,
+                    language=current_user.language,
                 )
             else:
                 generated_batch = await generate_questions(
@@ -168,6 +225,7 @@ async def next_question(
                     ai_client,
                     difficulty=session.difficulty,
                     avoid_themes=avoid_themes,
+                    language=current_user.language,
                 )
         except MissingApiKeyError as exc:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
@@ -180,6 +238,7 @@ async def next_question(
                 mode=session.mode,
                 format=session.format,
                 difficulty=session.difficulty,
+                language=current_user.language,
                 section_ids=scope,
                 theme=item["theme"],
                 question=item["question"],
@@ -217,6 +276,8 @@ async def next_question(
         category=attempt.category,
         options=attempt.options,
         hint=attempt.hint,
+        question_number=existing_count + 1,
+        total_questions=session.target_question_count,
     )
 
 
@@ -239,6 +300,11 @@ async def answer(
     if attempt.score is not None:
         return _attempt_to_result(attempt)
 
+    if session.finished_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Session has already been finished"
+        )
+
     if attempt.format == "quiz":
         if payload.selected_index is None:
             raise HTTPException(
@@ -254,10 +320,8 @@ async def answer(
         attempt.selected_index = payload.selected_index
         is_correct = payload.selected_index == attempt.correct_index
         attempt.score = 10 if is_correct else 0
-        attempt.feedback = (
-            "Correct!"
-            if is_correct
-            else f"Incorrect. The correct answer was: {attempt.options[attempt.correct_index]}"
+        attempt.feedback = _quiz_feedback(
+            current_user.language, is_correct, attempt.options[attempt.correct_index]
         )
         db.commit()
         db.refresh(attempt)
@@ -277,7 +341,9 @@ async def answer(
     )
 
     try:
-        evaluation = await evaluate_answer(attempt.question, payload.answer, context, ai_client)
+        evaluation = await evaluate_answer(
+            attempt.question, payload.answer, context, ai_client, language=current_user.language
+        )
     except MissingApiKeyError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
     except AIClientError as exc:
@@ -339,6 +405,11 @@ async def answer_stream(
             _sse_result_only(_attempt_to_result(attempt)), media_type="text/event-stream"
         )
 
+    if session.finished_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Session has already been finished"
+        )
+
     if not payload.answer:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -355,12 +426,13 @@ async def answer_stream(
     attempt_id = attempt.id
     question = attempt.question
     answer_text = payload.answer
+    language = current_user.language
 
     async def event_stream():
         evaluation = None
         try:
             async for delta, final_evaluation in evaluate_answer_stream(
-                question, answer_text, context, ai_client
+                question, answer_text, context, ai_client, language=language
             ):
                 if delta is not None:
                     yield _sse_event("delta", {"text": delta})
@@ -476,6 +548,7 @@ def get_session(
         mode=session.mode,
         format=session.format,
         difficulty=session.difficulty,
+        target_question_count=session.target_question_count,
         section_ids=session.section_ids,
         started_at=session.started_at,
         finished_at=session.finished_at,

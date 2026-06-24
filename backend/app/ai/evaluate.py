@@ -2,10 +2,16 @@ import re
 from collections.abc import AsyncIterator
 
 from app.ai.client import AIClientError
+from app.ai.generate import LANGUAGE_NAMES
 from app.ai.json_parsing import extract_json_value
 from app.ai.provider import AIProvider
 
 EVALUATION_TEMPERATURE = 0.0
+
+
+def _language_line(language: str) -> str:
+    name = LANGUAGE_NAMES.get(language, LANGUAGE_NAMES["en"])
+    return f"Write the feedback text (feedback, strengths, gaps) in {name}.\n"
 
 SYSTEM_PROMPT = (
     "You are an experienced interviewer evaluating a candidate's answer to an "
@@ -79,11 +85,13 @@ async def evaluate_answer(
     answer: str,
     context: str,
     ai_client: AIProvider,
+    language: str = "en",
 ) -> dict:
     user_prompt = (
         f"Knowledge base context:\n{context}\n\n"
         f"Interview question:\n{question}\n\n"
         f"Candidate's answer:\n{answer}\n\n"
+        f"{_language_line(language)}"
         "Evaluate the answer and respond with a strict JSON object only, "
         "no prose, no markdown fences."
     )
@@ -155,12 +163,16 @@ async def evaluate_answer_stream(
     answer: str,
     context: str,
     ai_client: AIProvider,
+    language: str = "en",
 ) -> AsyncIterator[tuple[str | None, dict | None]]:
     """Yields (delta_text, None) per streamed chunk, then (None, evaluation) once done."""
+    language_name = LANGUAGE_NAMES.get(language, LANGUAGE_NAMES["en"])
     user_prompt = (
         f"Knowledge base context:\n{context}\n\n"
         f"Interview question:\n{question}\n\n"
         f"Candidate's answer:\n{answer}\n\n"
+        f"Write the feedback, strength, and gap text in {language_name}, but keep "
+        'the "SCORE:"/"FEEDBACK:"/"STRENGTHS:"/"GAPS:" labels themselves in English.\n'
         "Evaluate the answer using exactly the plain-text format described above."
     )
     messages = [

@@ -183,6 +183,24 @@ def test_quiz_wrong_answer_scores_zero(client, make_user):
     assert data["correct_index"] == 1
 
 
+def test_quiz_feedback_is_localized_to_user_language(client, make_user):
+    headers = make_user("sess-quiz-localized@example.com")
+    client.put("/settings/language", json={"language": "uk"}, headers=headers)
+    section_id = _create_section_with_document(client, headers)
+    session_id = _start_session(client, headers, section_id, "quiz")
+
+    _override_ai_client(_StubAIClient(QUIZ_QUESTION_JSON))
+    try:
+        client.post(f"/sessions/{session_id}/next", headers=headers)
+    finally:
+        _clear_ai_override()
+
+    correct = client.post(
+        f"/sessions/{session_id}/answer", json={"selected_index": 1}, headers=headers
+    )
+    assert correct.json()["feedback"] == "Правильно!"
+
+
 def test_quiz_summary_hides_correct_index_before_answering(client, make_user):
     headers = make_user("sess-quiz-hide@example.com")
     section_id = _create_section_with_document(client, headers)
@@ -372,3 +390,130 @@ def test_stream_answer_double_submit_does_not_recall_ai(client, make_user):
     first_result = _parse_sse(first.text)[-1][1]
     second_result = _parse_sse(second.text)[-1][1]
     assert first_result["score"] == second_result["score"] == 6
+
+
+def test_new_user_defaults_session_length_to_five(client, make_user):
+    headers = make_user("sess-length-default@example.com")
+    me = client.get("/auth/me", headers=headers)
+    assert me.json()["session_length"] == 5
+
+
+def test_update_session_length_persists_and_is_used_for_new_sessions(client, make_user):
+    headers = make_user("sess-length-update@example.com")
+    section_id = _create_section_with_document(client, headers)
+
+    update = client.put("/settings/session-length", json={"session_length": 7}, headers=headers)
+    assert update.status_code == 200
+    assert update.json()["session_length"] == 7
+
+    session_id = _start_session(client, headers, section_id, "open_ended")
+    session = client.get(f"/sessions/{session_id}", headers=headers)
+    assert session.json()["target_question_count"] == 7
+
+
+def test_update_session_length_rejects_out_of_range(client, make_user):
+    headers = make_user("sess-length-range@example.com")
+    too_low = client.put("/settings/session-length", json={"session_length": 4}, headers=headers)
+    too_high = client.put("/settings/session-length", json={"session_length": 11}, headers=headers)
+    assert too_low.status_code == 422
+    assert too_high.status_code == 422
+
+
+def test_next_question_reports_progress_and_blocks_past_the_target_count(client, make_user, monkeypatch):
+    from app.config import settings as app_settings
+
+    monkeypatch.setattr(app_settings, "question_bank_batch_size", 1)
+    headers = make_user("sess-length-cap@example.com")
+    length_update = client.put("/settings/session-length", json={"session_length": 5}, headers=headers)
+    assert length_update.status_code == 200
+    section_id = _create_section_with_document(client, headers)
+    session_id = _start_session(client, headers, section_id, "open_ended")
+
+    _override_ai_client(_StubAIClient(OPEN_ENDED_QUESTION_JSON))
+    try:
+        responses = [client.post(f"/sessions/{session_id}/next", headers=headers) for _ in range(6)]
+    finally:
+        _clear_ai_override()
+
+    first, *_, fifth, sixth = responses
+    assert first.json()["question_number"] == 1
+    assert first.json()["total_questions"] == 5
+    assert fifth.json()["question_number"] == 5
+    assert sixth.status_code == 409
+
+
+def test_finish_requires_auth(client):
+    response = client.post("/sessions/1/finish")
+    assert response.status_code == 401
+
+
+def test_finish_rejects_another_users_session(client, make_user):
+    headers_a = make_user("sess-finish-a@example.com")
+    headers_b = make_user("sess-finish-b@example.com")
+    section_id = _create_section_with_document(client, headers_a)
+    session_id = _start_session(client, headers_a, section_id, "open_ended")
+
+    response = client.post(f"/sessions/{session_id}/finish", headers=headers_b)
+    assert response.status_code == 404
+
+
+def test_finish_sets_timestamp_and_is_idempotent(client, make_user):
+    headers = make_user("sess-finish@example.com")
+    section_id = _create_section_with_document(client, headers)
+    session_id = _start_session(client, headers, section_id, "open_ended")
+
+    first = client.post(f"/sessions/{session_id}/finish", headers=headers)
+    assert first.status_code == 200
+    assert first.json()["finished_at"] is not None
+
+    second = client.post(f"/sessions/{session_id}/finish", headers=headers)
+    assert second.status_code == 200
+    assert second.json()["finished_at"] == first.json()["finished_at"]
+
+
+def test_next_question_rejected_after_finish(client, make_user):
+    headers = make_user("sess-finish-next@example.com")
+    section_id = _create_section_with_document(client, headers)
+    session_id = _start_session(client, headers, section_id, "open_ended")
+
+    client.post(f"/sessions/{session_id}/finish", headers=headers)
+    response = client.post(f"/sessions/{session_id}/next", headers=headers)
+    assert response.status_code == 409
+
+
+def test_answer_rejected_for_new_attempt_after_finish_but_existing_result_still_readable(
+    client, make_user
+):
+    headers = make_user("sess-finish-answer@example.com")
+    section_id = _create_section_with_document(client, headers)
+    session_id = _start_session(client, headers, section_id, "quiz")
+
+    _override_ai_client(_StubAIClient(QUIZ_QUESTION_JSON))
+    try:
+        client.post(f"/sessions/{session_id}/next", headers=headers)
+    finally:
+        _clear_ai_override()
+
+    client.post(f"/sessions/{session_id}/finish", headers=headers)
+
+    blocked = client.post(f"/sessions/{session_id}/answer", json={"selected_index": 1}, headers=headers)
+    assert blocked.status_code == 409
+
+
+def test_answer_stream_rejected_after_finish(client, make_user):
+    headers = make_user("sess-finish-stream@example.com")
+    section_id = _create_section_with_document(client, headers)
+    session_id = _start_session(client, headers, section_id, "open_ended")
+
+    _override_ai_client(_StubAIClient(OPEN_ENDED_QUESTION_JSON))
+    try:
+        client.post(f"/sessions/{session_id}/next", headers=headers)
+    finally:
+        _clear_ai_override()
+
+    client.post(f"/sessions/{session_id}/finish", headers=headers)
+
+    response = client.post(
+        f"/sessions/{session_id}/answer/stream", json={"answer": "test"}, headers=headers
+    )
+    assert response.status_code == 409

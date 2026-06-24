@@ -9,6 +9,7 @@ from app.config import settings
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
+    language: Literal["en", "uk", "ru"] = "en"
 
 
 class UserLogin(BaseModel):
@@ -21,7 +22,17 @@ class UserRead(BaseModel):
 
     id: int
     email: EmailStr
+    language: str
+    session_length: int
     created_at: datetime
+
+
+class LanguageUpdate(BaseModel):
+    language: Literal["en", "uk", "ru"]
+
+
+class SessionLengthUpdate(BaseModel):
+    session_length: int = Field(ge=5, le=10)
 
 
 class Token(BaseModel):
@@ -109,6 +120,7 @@ class SessionRead(BaseModel):
     mode: str
     format: str
     difficulty: str
+    target_question_count: int
     section_ids: list[int]
     started_at: datetime
     finished_at: datetime | None
@@ -120,6 +132,8 @@ class NextQuestionRead(BaseModel):
     category: str
     options: list[str] | None = None
     hint: str
+    question_number: int
+    total_questions: int
 
 
 class AnswerRequest(BaseModel):

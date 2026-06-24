@@ -45,7 +45,9 @@ async def generate(
     sections = get_owned_sections(db, payload.section_ids, current_user.id)
 
     try:
-        return await generate_questions(sections, payload.mode, payload.count, ai_client)
+        return await generate_questions(
+            sections, payload.mode, payload.count, ai_client, language=current_user.language
+        )
     except MissingApiKeyError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
     except AIClientError as exc:
@@ -65,7 +67,9 @@ async def evaluate(
     )
 
     try:
-        return await evaluate_answer(payload.question, payload.answer, context, ai_client)
+        return await evaluate_answer(
+            payload.question, payload.answer, context, ai_client, language=current_user.language
+        )
     except MissingApiKeyError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
     except AIClientError as exc:
