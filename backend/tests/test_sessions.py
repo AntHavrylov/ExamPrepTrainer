@@ -446,6 +446,58 @@ def test_next_question_reports_progress_and_blocks_past_the_target_count(client,
     assert sixth.status_code == 409
 
 
+def test_next_question_blocked_when_live_generation_disabled_and_pool_empty(client, make_user, monkeypatch):
+    from app.config import settings as app_settings
+
+    monkeypatch.setattr(app_settings, "live_question_generation_enabled", False)
+    headers = make_user("sess-live-gen-disabled@example.com")
+    section_id = _create_section_with_document(client, headers)
+    session_id = _start_session(client, headers, section_id, "open_ended")
+
+    stub = _StubAIClient(OPEN_ENDED_QUESTION_JSON)
+    _override_ai_client(stub)
+    try:
+        response = client.post(f"/sessions/{session_id}/next", headers=headers)
+    finally:
+        _clear_ai_override()
+
+    assert response.status_code == 503
+    assert "Question Bank" in response.json()["detail"]
+    assert stub.calls == 0
+
+
+def test_next_question_uses_pregenerated_bank_row_when_live_generation_disabled(client, make_user, monkeypatch):
+    from app.config import settings as app_settings
+
+    monkeypatch.setattr(app_settings, "live_question_generation_enabled", False)
+    headers = make_user("sess-live-gen-disabled-prefilled@example.com")
+    section_id = _create_section_with_document(client, headers)
+
+    _override_ai_client(_StubAIClient(OPEN_ENDED_QUESTION_JSON))
+    try:
+        generate_resp = client.post(
+            "/question-bank/generate",
+            json={"section_ids": [section_id], "mode": "technical", "format": "open_ended", "count": 1},
+            headers=headers,
+        )
+    finally:
+        _clear_ai_override()
+    assert generate_resp.status_code == 201
+
+    session_id = _start_session(client, headers, section_id, "open_ended")
+
+    stub = _StubAIClient(OPEN_ENDED_QUESTION_JSON)
+    _override_ai_client(stub)
+    try:
+        next_resp = client.post(f"/sessions/{session_id}/next", headers=headers)
+    finally:
+        _clear_ai_override()
+
+    assert next_resp.status_code == 200
+    assert next_resp.json()["question"] == "What is the GIL?"
+    assert stub.calls == 0
+
+
 def test_finish_requires_auth(client):
     response = client.post("/sessions/1/finish")
     assert response.status_code == 401

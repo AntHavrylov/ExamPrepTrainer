@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     max_generation_context_chars: int = 12000
     question_bank_batch_size: int = 5
     background_question_batch_size: int = 2
+    # Whether a training session may trigger AI generation itself (on-the-fly
+    # fallback when the pool is dry, plus speculative background top-up).
+    # Off by default so generation only ever happens explicitly, from the
+    # Question Bank tab - keeps the (slow, rate-limited) AI calls fully under
+    # the user's control instead of firing mid-session.
+    live_question_generation_enabled: bool = False
 
     ai_rate_limit_max_requests: int = 30
     ai_rate_limit_window_seconds: int = 60

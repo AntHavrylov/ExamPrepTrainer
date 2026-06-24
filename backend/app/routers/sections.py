@@ -9,6 +9,7 @@ from app.auth.deps import get_current_user
 from app.config import settings
 from app.db import get_db
 from app.models import Document, Section, User
+from app.question_pool import remove_orphaned_bank_rows
 from app.schemas import (
     DocumentCreate,
     DocumentRead,
@@ -85,6 +86,10 @@ def delete_section(
     section = _get_owned_section(db, section_id, current_user.id)
     db.delete(section)
     db.commit()
+    # The section's own notes are gone via cascade; any pooled questions that
+    # were generated for it (alone or combined with other sections) can never
+    # be matched again, so sweep those out too instead of leaving dead rows.
+    remove_orphaned_bank_rows(db, current_user.id)
 
 
 def _create_document(db: Session, section: Section, payload: DocumentCreate) -> Document:

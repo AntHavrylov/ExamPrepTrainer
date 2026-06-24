@@ -1,4 +1,50 @@
+import json
+
+from sqlalchemy import select
+
+from app.ai.client import get_ai_client
 from app.config import settings
+from app.main import app
+from app.models import QuestionBank
+
+
+class _StubAIClient:
+    def __init__(self, response_text: str):
+        self.response_text = response_text
+
+    async def complete(self, messages: list[dict[str, str]], temperature: float | None = None) -> str:
+        return self.response_text
+
+
+def _override_ai_client(stub) -> None:
+    app.dependency_overrides[get_ai_client] = lambda: stub
+
+
+def _clear_ai_override() -> None:
+    app.dependency_overrides.pop(get_ai_client, None)
+
+
+def _open_ended_item(question: str, theme: str) -> dict:
+    return {
+        "question": question,
+        "category": "technical",
+        "theme": theme,
+        "hint": "A small nudge.",
+        "explanation": "A model explanation.",
+    }
+
+
+def _generate_bank_item(client, headers, section_ids: list[int], question: str, theme: str) -> None:
+    _override_ai_client(_StubAIClient(json.dumps([_open_ended_item(question, theme)])))
+    try:
+        response = client.post(
+            "/question-bank/generate",
+            json={"section_ids": section_ids, "mode": "mixed", "format": "open_ended", "count": 1},
+            headers=headers,
+        )
+        assert response.status_code == 201
+    finally:
+        _clear_ai_override()
 
 
 def test_user_can_create_add_edit_delete_document(client, make_user):
@@ -199,6 +245,69 @@ def test_user_can_delete_section_and_its_documents(client, make_user):
 
     listed = client.get("/sections", headers=headers)
     assert listed.json() == []
+
+
+def test_deleting_a_section_removes_question_bank_rows_scoped_to_it(client, make_user, db_session):
+    headers = make_user("delete-section-orphan@example.com")
+    section = client.post("/sections", json={"name": "Temp"}, headers=headers).json()
+
+    _generate_bank_item(client, headers, [section["id"]], "What is the GIL?", "python gil")
+
+    rows_before = list(db_session.scalars(select(QuestionBank)))
+    assert len(rows_before) == 1
+
+    deleted = client.delete(f"/sections/{section['id']}", headers=headers)
+    assert deleted.status_code == 204
+
+    rows_after = list(db_session.scalars(select(QuestionBank)))
+    assert rows_after == []
+
+
+def test_deleting_a_section_removes_multi_section_question_bank_rows_too(client, make_user, db_session):
+    headers = make_user("delete-section-multi@example.com")
+    section_a = client.post("/sections", json={"name": "A"}, headers=headers).json()
+    section_b = client.post("/sections", json={"name": "B"}, headers=headers).json()
+
+    _generate_bank_item(client, headers, [section_a["id"], section_b["id"]], "Combined question", "combined")
+
+    deleted = client.delete(f"/sections/{section_a['id']}", headers=headers)
+    assert deleted.status_code == 204
+
+    # The combo can never be matched again now that section A is gone, even
+    # though section B still exists, so the whole row should be gone too.
+    rows_after = list(db_session.scalars(select(QuestionBank)))
+    assert rows_after == []
+
+
+def test_deleting_a_section_leaves_other_sections_questions_untouched(client, make_user, db_session):
+    headers = make_user("delete-section-keep-other@example.com")
+    section_to_delete = client.post("/sections", json={"name": "Delete me"}, headers=headers).json()
+    section_to_keep = client.post("/sections", json={"name": "Keep me"}, headers=headers).json()
+
+    _generate_bank_item(client, headers, [section_to_delete["id"]], "Question for deleted section", "a")
+    _generate_bank_item(client, headers, [section_to_keep["id"]], "Question for kept section", "b")
+
+    deleted = client.delete(f"/sections/{section_to_delete['id']}", headers=headers)
+    assert deleted.status_code == 204
+
+    rows_after = list(db_session.scalars(select(QuestionBank)))
+    assert len(rows_after) == 1
+    assert rows_after[0].question == "Question for kept section"
+
+
+def test_deleting_a_section_removes_already_used_question_bank_rows_too(client, make_user, db_session):
+    headers = make_user("delete-section-used@example.com")
+    section = client.post("/sections", json={"name": "Temp"}, headers=headers).json()
+
+    _generate_bank_item(client, headers, [section["id"]], "What is the GIL?", "python gil")
+    row = db_session.scalar(select(QuestionBank))
+    row.used_at = row.created_at
+    db_session.commit()
+
+    deleted = client.delete(f"/sections/{section['id']}", headers=headers)
+    assert deleted.status_code == 204
+
+    assert list(db_session.scalars(select(QuestionBank))) == []
 
 
 def test_user_b_cannot_delete_user_a_section(client, make_user):

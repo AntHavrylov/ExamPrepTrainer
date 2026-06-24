@@ -4,6 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.config import settings
 from app.db import Base, get_db, get_session_factory
 from app.main import app
 from app.rate_limit import _hits as _ai_rate_limit_hits
@@ -17,6 +18,15 @@ def _clear_ai_rate_limit_buckets():
     _ai_rate_limit_hits.clear()
     yield
     _ai_rate_limit_hits.clear()
+
+
+@pytest.fixture(autouse=True)
+def _enable_live_question_generation(monkeypatch):
+    # Off by default in production (generation only happens explicitly from the
+    # Question Bank tab), but most existing session tests exercise the on-the-fly
+    # generation fallback directly, so it's on by default here. Tests covering
+    # the disabled gating override it back to False explicitly.
+    monkeypatch.setattr(settings, "live_question_generation_enabled", True)
 
 
 @pytest.fixture()

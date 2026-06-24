@@ -208,3 +208,31 @@ class ModelOption(BaseModel):
     id: str
     name: str
     context_length: int | None = None
+
+
+class QuestionBankGenerateRequest(BaseModel):
+    section_ids: list[int] = Field(min_length=1)
+    mode: Literal["technical", "behavioral", "mixed"] = "mixed"
+    format: Literal["open_ended", "quiz"] = "open_ended"
+    difficulty: Literal["easy", "medium", "hard"] = "medium"
+    count: int = Field(default=5, ge=1, le=settings.max_questions_per_generate)
+
+
+class QuestionBankItemRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    mode: str
+    format: str
+    difficulty: str
+    language: str
+    section_ids: list[int]
+    theme: str
+    question: str
+    category: str
+    options: list[str] | None = None
+    correct_index: int | None = None
+    hint: str
+    explanation: str
+    used_at: datetime | None = None
+    created_at: datetime
