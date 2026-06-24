@@ -1,5 +1,6 @@
 const TOKEN_KEY = 'prep_trainer_token'
 const REFRESH_TOKEN_KEY = 'prep_trainer_refresh_token'
+export const ACTIVE_SESSION_KEY = 'prep_trainer_active_session'
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY)
@@ -192,8 +193,8 @@ async function streamAnswer(sessionId, answerText, onDelta) {
 }
 
 export const api = {
-  register: (email, password) =>
-    publicRequest('/auth/register', { method: 'POST', body: { email, password } }),
+  register: (email, password, language) =>
+    publicRequest('/auth/register', { method: 'POST', body: { email, password, language } }),
   login: (email, password) =>
     publicRequest('/auth/login', { method: 'POST', body: { email, password } }),
   logout: () => {
@@ -231,10 +232,29 @@ export const api = {
   getSession: (sessionId) => request(`/sessions/${sessionId}`),
   listSessions: () => request('/sessions'),
   getStats: () => request('/sessions/stats'),
+  finishSession: (sessionId) => request(`/sessions/${sessionId}/finish`, { method: 'POST' }),
 
   listModels: () => request('/settings/models'),
   getApiKeyStatus: () => request('/settings/api-key'),
   saveApiKey: (apiKey, model) =>
     request('/settings/api-key', { method: 'PUT', body: { api_key: apiKey, model } }),
   deleteApiKey: () => request('/settings/api-key', { method: 'DELETE' }),
+  updateLanguage: (language) => request('/settings/language', { method: 'PUT', body: { language } }),
+  updateSessionLength: (sessionLength) =>
+    request('/settings/session-length', { method: 'PUT', body: { session_length: sessionLength } }),
+
+  listQuestionBank: (filters = {}) => {
+    const params = new URLSearchParams()
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') params.set(key, value)
+    })
+    const query = params.toString()
+    return request(`/question-bank${query ? `?${query}` : ''}`)
+  },
+  generateQuestionBankItems: (sectionIds, mode, format, difficulty, count) =>
+    request('/question-bank/generate', {
+      method: 'POST',
+      body: { section_ids: sectionIds, mode, format, difficulty, count },
+    }),
+  deleteQuestionBankItem: (id) => request(`/question-bank/${id}`, { method: 'DELETE' }),
 }

@@ -1,8 +1,21 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
+import { useLanguage } from '../context/LanguageContext'
 import { OPEN_ENDED_EXPLANATION_THRESHOLD } from '../constants'
 
+const MODE_KEYS = {
+  technical: 'enums.modeTechnical',
+  behavioral: 'enums.modeBehavioral',
+  mixed: 'enums.modeMixed',
+}
+
+const FORMAT_KEYS = {
+  open_ended: 'enums.formatOpenEnded',
+  quiz: 'enums.formatQuiz',
+}
+
 export default function SummaryScreen({ sessionId, onDone }) {
+  const { t } = useLanguage()
   const [summary, setSummary] = useState(null)
   const [error, setError] = useState(null)
 
@@ -19,19 +32,24 @@ export default function SummaryScreen({ sessionId, onDone }) {
         {error}
       </p>
     )
-  if (!summary) return <p>Loading summary...</p>
+  if (!summary) return <p>{t('summary.loading')}</p>
 
   const answered = summary.attempts.filter((a) => a.score !== null)
   const isQuiz = summary.format === 'quiz'
 
   return (
     <div className="summary-screen">
-      <h2>Session summary</h2>
+      <h2>{t('summary.title')}</h2>
       <p>
-        Mode: {summary.mode} · Format: {summary.format}
+        {t('summary.modeFormat', {
+          mode: t(MODE_KEYS[summary.mode] || summary.mode),
+          format: t(FORMAT_KEYS[summary.format] || summary.format),
+        })}
       </p>
       <p>
-        Average score: {summary.average_score !== null ? summary.average_score.toFixed(1) : '—'} / 10
+        {t('summary.average', {
+          score: summary.average_score !== null ? summary.average_score.toFixed(1) : '—',
+        })}
       </p>
 
       <ol className="summary-list">
@@ -43,25 +61,33 @@ export default function SummaryScreen({ sessionId, onDone }) {
             <li key={a.id}>
               <p className="question">{a.question}</p>
               {isQuiz && a.options && (
-                <p className={wrongQuiz ? 'incorrect' : 'correct'}>{wrongQuiz ? 'Incorrect' : 'Correct!'}</p>
+                <p className={wrongQuiz ? 'incorrect' : 'correct'}>
+                  {wrongQuiz ? t('summary.incorrect') : t('summary.correct')}
+                </p>
               )}
-              {isQuiz && a.options && wrongQuiz && (
+              {isQuiz && a.options && (
                 <>
-                  <p className="submitted-answer">Your answer: {a.options[a.selected_index]}</p>
-                  <p>Correct answer: {a.options[a.correct_index]}</p>
+                  <p className="submitted-answer">
+                    {t('summary.yourAnswer', { answer: a.options[a.selected_index] })}
+                  </p>
+                  <p>{t('summary.correctAnswer', { answer: a.options[a.correct_index] })}</p>
                 </>
               )}
-              <p>Score: {a.score} / 10</p>
-              {!isQuiz && a.answer && <p className="submitted-answer">Your answer: {a.answer}</p>}
+              <p>{t('summary.score', { score: a.score })}</p>
+              {!isQuiz && a.answer && (
+                <p className="submitted-answer">{t('summary.yourAnswer', { answer: a.answer })}</p>
+              )}
               {a.feedback && <p>{a.feedback}</p>}
-              {showExplanation && <p className="explanation">Explanation: {a.explanation}</p>}
+              {showExplanation && (
+                <p className="explanation">{t('summary.explanation', { text: a.explanation })}</p>
+              )}
             </li>
           )
         })}
-        {answered.length === 0 && <li>No answered questions yet.</li>}
+        {answered.length === 0 && <li>{t('summary.none')}</li>}
       </ol>
 
-      <button onClick={onDone}>Back to sections</button>
+      <button onClick={onDone}>{t('summary.back')}</button>
     </div>
   )
 }

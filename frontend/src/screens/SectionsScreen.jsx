@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
+import { useLanguage } from '../context/LanguageContext'
 
 export default function SectionsScreen() {
+  const { t } = useLanguage()
   const [sections, setSections] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -53,7 +55,7 @@ export default function SectionsScreen() {
   }
 
   async function handleDeleteSection(id, name) {
-    if (!window.confirm(`Delete "${name}" and all its notes? This can't be undone.`)) return
+    if (!window.confirm(t('sections.deleteConfirm', { name }))) return
     setError(null)
     try {
       await api.deleteSection(id)
@@ -121,7 +123,7 @@ export default function SectionsScreen() {
     }
   }
 
-  if (loading) return <p>Loading sections...</p>
+  if (loading) return <p>{t('sections.loading')}</p>
 
   return (
     <div className="sections-screen">
@@ -133,7 +135,7 @@ export default function SectionsScreen() {
 
       <div className="sections-layout">
         <section className="sections-panel">
-          <h2>Your sections</h2>
+          <h2>{t('sections.yourSections')}</h2>
           <ul className="section-list">
             {sections.map((s) => (
               <li key={s.id}>
@@ -145,8 +147,8 @@ export default function SectionsScreen() {
                     type="button"
                     className="section-card-delete"
                     onClick={() => handleDeleteSection(s.id, s.name)}
-                    aria-label={`Delete ${s.name}`}
-                    title="Delete section"
+                    aria-label={t('sections.deleteSectionAria', { name: s.name })}
+                    title={t('sections.deleteSectionTitle')}
                   >
                     ×
                   </button>
@@ -154,26 +156,26 @@ export default function SectionsScreen() {
               </li>
             ))}
             {sections.length === 0 && (
-              <li className="section-list-empty">No sections yet — create one to get started.</li>
+              <li className="section-list-empty">{t('sections.empty')}</li>
             )}
           </ul>
         </section>
 
         <section className="create-section-panel">
-          <h3>Create new section</h3>
+          <h3>{t('sections.createNew')}</h3>
           <form onSubmit={handleCreateSection} className="create-section-form">
             <input
-              placeholder="Section name"
+              placeholder={t('sections.namePlaceholder')}
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               required
             />
             <input
-              placeholder="Description (optional)"
+              placeholder={t('sections.descPlaceholder')}
               value={newDescription}
               onChange={(e) => setNewDescription(e.target.value)}
             />
-            <button type="submit">Create section</button>
+            <button type="submit">{t('sections.createBtn')}</button>
           </form>
         </section>
       </div>
@@ -187,40 +189,40 @@ export default function SectionsScreen() {
                 <strong>{doc.title}</strong>
                 <p>{doc.content}</p>
                 <button className="btn-secondary" onClick={() => startEditDocument(doc)}>
-                  Edit
+                  {t('sections.editBtn')}
                 </button>
                 <button className="btn-danger" onClick={() => handleDeleteDocument(doc.id)}>
-                  Delete
+                  {t('sections.deleteBtn')}
                 </button>
               </li>
             ))}
-            {selectedSection.documents.length === 0 && <li>No notes yet.</li>}
+            {selectedSection.documents.length === 0 && <li>{t('sections.notesNone')}</li>}
           </ul>
 
           <form onSubmit={handleSaveDocument} className="document-form">
             <input
-              placeholder="Title"
+              placeholder={t('sections.titlePlaceholder')}
               value={docTitle}
               onChange={(e) => setDocTitle(e.target.value)}
               required
             />
             <textarea
-              placeholder="Paste your notes here..."
+              placeholder={t('sections.notesPlaceholder')}
               value={docContent}
               onChange={(e) => setDocContent(e.target.value)}
               rows={6}
               required
             />
-            <button type="submit">{editingDocId ? 'Save changes' : 'Add notes'}</button>
+            <button type="submit">{editingDocId ? t('sections.saveChanges') : t('sections.addNotes')}</button>
             {editingDocId && (
               <button type="button" className="btn-secondary" onClick={resetDocForm}>
-                Cancel
+                {t('sections.cancel')}
               </button>
             )}
           </form>
 
           <label className="document-upload">
-            Or import a .md/.txt file:
+            {t('sections.importLabel')}
             <input type="file" accept=".md,.txt" onChange={handleUploadFile} />
           </label>
         </section>

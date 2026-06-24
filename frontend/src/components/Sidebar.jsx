@@ -1,10 +1,12 @@
+import { useLanguage } from '../context/LanguageContext'
 import { useTheme } from '../hooks/useTheme'
 
 const NAV_ITEMS = [
-  { key: 'sections', label: 'Sections', icon: IconBook },
-  { key: 'start-training', label: 'Train', icon: IconTarget },
-  { key: 'progress', label: 'Progress', icon: IconChart },
-  { key: 'settings', label: 'Settings', icon: IconSettings },
+  { key: 'sections', labelKey: 'nav.sections', icon: IconBook },
+  { key: 'start-training', labelKey: 'nav.train', icon: IconTarget },
+  { key: 'question-bank', labelKey: 'nav.questionBank', icon: IconLayers },
+  { key: 'progress', labelKey: 'nav.progress', icon: IconChart },
+  { key: 'settings', labelKey: 'nav.settings', icon: IconSettings },
 ]
 
 function IconBook() {
@@ -22,6 +24,15 @@ function IconTarget() {
       <circle cx="12" cy="12" r="8" />
       <circle cx="12" cy="12" r="4" />
       <circle cx="12" cy="12" r="0.5" fill="currentColor" />
+    </svg>
+  )
+}
+
+function IconLayers() {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3l9 5-9 5-9-5 9-5Z" />
+      <path d="M3 13l9 5 9-5" />
     </svg>
   )
 }
@@ -76,26 +87,27 @@ function IconLogout() {
 
 export default function Sidebar({ activeNav, onNavigate, user, onLogout }) {
   const { theme, toggleTheme } = useTheme()
+  const { t } = useLanguage()
   const initials = (user.email || '?').slice(0, 2).toUpperCase()
 
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
         <span className="sidebar-brand-mark">EP</span>
-        <span className="sidebar-brand-name">Exam Prep Trainer</span>
+        <span className="sidebar-brand-name">{t('app.title')}</span>
       </div>
 
       <nav className="sidebar-nav">
-        {NAV_ITEMS.map(({ key, label, icon: Icon }) => (
+        {NAV_ITEMS.map(({ key, labelKey, icon: Icon }) => (
           <button
             key={key}
             type="button"
             className={`sidebar-nav-item${activeNav === key ? ' active' : ''}`}
             onClick={() => onNavigate(key)}
-            title={label}
+            title={t(labelKey)}
           >
             <Icon />
-            <span>{label}</span>
+            <span>{t(labelKey)}</span>
           </button>
         ))}
       </nav>
@@ -105,11 +117,11 @@ export default function Sidebar({ activeNav, onNavigate, user, onLogout }) {
           type="button"
           className="sidebar-theme-toggle"
           onClick={toggleTheme}
-          aria-label="Toggle color theme"
-          title="Toggle color theme"
+          aria-label={t('app.toggleThemeAria')}
+          title={t('app.toggleThemeAria')}
         >
           {theme === 'dark' ? <IconSun /> : <IconMoon />}
-          <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+          <span>{theme === 'dark' ? t('app.lightMode') : t('app.darkMode')}</span>
         </button>
 
         <div className="sidebar-user" title={user.email}>
@@ -117,9 +129,9 @@ export default function Sidebar({ activeNav, onNavigate, user, onLogout }) {
           <span className="sidebar-user-email">{user.email}</span>
         </div>
 
-        <button type="button" className="sidebar-logout" onClick={onLogout} title="Log out">
+        <button type="button" className="sidebar-logout" onClick={onLogout} title={t('app.logout')}>
           <IconLogout />
-          <span>Log out</span>
+          <span>{t('app.logout')}</span>
         </button>
       </div>
     </aside>

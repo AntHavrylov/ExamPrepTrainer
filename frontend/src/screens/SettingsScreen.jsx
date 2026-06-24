@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
+import { useAuth } from '../context/AuthContext'
+import { useLanguage } from '../context/LanguageContext'
+import { LANGUAGE_NATIVE_NAMES, SUPPORTED_LANGUAGES } from '../i18n/translations'
+
+const SESSION_LENGTH_OPTIONS = [5, 10, 15]
 
 export default function SettingsScreen() {
+  const { user } = useAuth()
+  const { language, setLanguage, t } = useLanguage()
   const [status, setStatus] = useState(null)
   const [models, setModels] = useState([])
   const [loading, setLoading] = useState(true)
@@ -11,6 +18,9 @@ export default function SettingsScreen() {
   const [modelFilter, setModelFilter] = useState('')
   const [saving, setSaving] = useState(false)
   const [removing, setRemoving] = useState(false)
+  const [savingLanguage, setSavingLanguage] = useState(false)
+  const [sessionLength, setSessionLength] = useState(user?.session_length ?? 5)
+  const [savingSessionLength, setSavingSessionLength] = useState(false)
 
   useEffect(() => {
     Promise.all([api.getApiKeyStatus(), api.listModels()])
@@ -57,7 +67,7 @@ export default function SettingsScreen() {
   }
 
   async function handleRemove() {
-    if (!window.confirm("Remove your saved API key? This can't be undone.")) return
+    if (!window.confirm(t('settings.removeConfirm'))) return
     setError(null)
     setRemoving(true)
     try {
@@ -70,15 +80,40 @@ export default function SettingsScreen() {
     }
   }
 
-  if (loading) return <p>Loading settings...</p>
+  async function handleLanguageChange(e) {
+    const next = e.target.value
+    setError(null)
+    setSavingLanguage(true)
+    try {
+      await api.updateLanguage(next)
+      setLanguage(next)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSavingLanguage(false)
+    }
+  }
+
+  async function handleSessionLengthChange(e) {
+    const next = Number(e.target.value)
+    setError(null)
+    setSavingSessionLength(true)
+    try {
+      await api.updateSessionLength(next)
+      setSessionLength(next)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSavingSessionLength(false)
+    }
+  }
+
+  if (loading) return <p>{t('settings.loading')}</p>
 
   return (
     <div className="settings-screen">
-      <h2>AI settings</h2>
-      <p className="settings-intro">
-        Connect your own OpenRouter API key and pick a model. A key is required to use AI
-        features (generating and scoring questions) — there's no shared default key.
-      </p>
+      <h2>{t('settings.languageTitle')}</h2>
+      <p className="settings-intro">{t('settings.languageIntro')}</p>
 
       {error && (
         <p className="error" role="alert">
@@ -86,20 +121,56 @@ export default function SettingsScreen() {
         </p>
       )}
 
+      <section className="settings-panel">
+        <label>
+          {t('settings.languageTitle')}
+          <select value={language} onChange={handleLanguageChange} disabled={savingLanguage}>
+            {SUPPORTED_LANGUAGES.map((code) => (
+              <option key={code} value={code}>
+                {LANGUAGE_NATIVE_NAMES[code]}
+              </option>
+            ))}
+          </select>
+        </label>
+      </section>
+
+      <h2>{t('settings.sessionLengthTitle')}</h2>
+      <p className="settings-intro">{t('settings.sessionLengthIntro')}</p>
+
+      <section className="settings-panel">
+        <label>
+          {t('settings.sessionLengthTitle')}
+          <select
+            value={sessionLength}
+            onChange={handleSessionLengthChange}
+            disabled={savingSessionLength}
+          >
+            {SESSION_LENGTH_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {t('settings.sessionLengthQuestions', { n })}
+              </option>
+            ))}
+          </select>
+        </label>
+      </section>
+
+      <h2>{t('settings.title')}</h2>
+      <p className="settings-intro">{t('settings.intro')}</p>
+
       {status?.has_key ? (
         <section className="settings-panel">
           <p>
-            Using your own OpenRouter key with model <strong>{status.model}</strong>.
+            {t('settings.usingKeyPrefix')} <strong>{status.model}</strong>.
           </p>
           <button type="button" className="btn-danger" onClick={handleRemove} disabled={removing}>
-            {removing ? 'Removing...' : 'Remove key'}
+            {removing ? t('settings.removing') : t('settings.removeKey')}
           </button>
         </section>
       ) : (
         <section className="settings-panel">
           <form onSubmit={handleSave} className="settings-form">
             <label>
-              OpenRouter API key
+              {t('settings.apiKeyLabel')}
               <input
                 type="password"
                 placeholder="sk-or-..."
@@ -110,29 +181,29 @@ export default function SettingsScreen() {
             </label>
 
             <label>
-              Filter models
+              {t('settings.filterModelsLabel')}
               <input
                 type="text"
-                placeholder="Filter by name or id..."
+                placeholder={t('settings.filterPlaceholder')}
                 value={modelFilter}
                 onChange={handleFilterChange}
               />
             </label>
 
             <label>
-              Model
+              {t('settings.modelLabel')}
               <select value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)}>
                 {filteredModels.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.name}
                   </option>
                 ))}
-                {filteredModels.length === 0 && <option value="">No models match</option>}
+                {filteredModels.length === 0 && <option value="">{t('settings.noModelsMatch')}</option>}
               </select>
             </label>
 
             <button type="submit" disabled={saving || !apiKey || !selectedModel}>
-              {saving ? 'Saving...' : 'Save key'}
+              {saving ? t('settings.saving') : t('settings.saveKey')}
             </button>
           </form>
         </section>

@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { useLanguage } from '../context/LanguageContext'
+import { LANGUAGE_NATIVE_NAMES, SUPPORTED_LANGUAGES } from '../i18n/translations'
 
 export default function LoginScreen() {
   const { login, register } = useAuth()
+  const { language, setLanguage, t } = useLanguage()
   const [mode, setMode] = useState('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -17,7 +20,7 @@ export default function LoginScreen() {
       if (mode === 'login') {
         await login(email, password)
       } else {
-        await register(email, password)
+        await register(email, password, language)
       }
     } catch (err) {
       setError(err.message)
@@ -28,11 +31,24 @@ export default function LoginScreen() {
 
   return (
     <div className="auth-screen">
-      <h1 className="auth-title">Exam Prep Trainer</h1>
-      <h2>{mode === 'login' ? 'Log in' : 'Register'}</h2>
+      <select
+        className="auth-language-select"
+        value={language}
+        onChange={(e) => setLanguage(e.target.value)}
+        aria-label={t('settings.languageTitle')}
+      >
+        {SUPPORTED_LANGUAGES.map((code) => (
+          <option key={code} value={code}>
+            {LANGUAGE_NATIVE_NAMES[code]}
+          </option>
+        ))}
+      </select>
+
+      <h1 className="auth-title">{t('app.title')}</h1>
+      <h2>{mode === 'login' ? t('login.titleLogin') : t('login.titleRegister')}</h2>
       <form onSubmit={handleSubmit}>
         <label>
-          Email
+          {t('login.email')}
           <input
             type="email"
             value={email}
@@ -41,7 +57,7 @@ export default function LoginScreen() {
           />
         </label>
         <label>
-          Password
+          {t('login.password')}
           <input
             type="password"
             value={password}
@@ -55,11 +71,15 @@ export default function LoginScreen() {
           </p>
         )}
         <button type="submit" disabled={submitting}>
-          {submitting ? 'Please wait...' : mode === 'login' ? 'Log in' : 'Register'}
+          {submitting
+            ? t('login.pleaseWait')
+            : mode === 'login'
+              ? t('login.titleLogin')
+              : t('login.titleRegister')}
         </button>
       </form>
       <button type="button" className="link" onClick={() => setMode(mode === 'login' ? 'register' : 'login')}>
-        {mode === 'login' ? "Don't have an account? Register" : 'Already have an account? Log in'}
+        {mode === 'login' ? t('login.toggleToRegister') : t('login.toggleToLogin')}
       </button>
     </div>
   )

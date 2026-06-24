@@ -1,9 +1,14 @@
 server {
     listen 80;
 
-    location ~ ^/(auth|sections|documents|ai|sessions|settings|health) {
-        proxy_pass http://backend:8000;
-        proxy_set_header Host $host;
+    location ~ ^/(auth|sections|documents|ai|sessions|settings|question-bank|health) {
+        # BACKEND_ORIGIN includes scheme+host, e.g. http://backend:8000 in
+        # docker-compose or https://<app>.azurewebsites.net in Azure; $proxy_host
+        # then mirrors whatever host that resolves to, so Azure's Host-header
+        # routing reaches the right App Service.
+        proxy_pass ${BACKEND_ORIGIN};
+        proxy_ssl_server_name on;
+        proxy_set_header Host $proxy_host;
         # Nginx buffers proxied responses by default, which would hold back
         # the whole SSE stream from /sessions/{id}/answer/stream until the
         # backend closes the connection - defeating live streaming.

@@ -1,0 +1,6 @@
+docker login registry.gitlab.com
+docker build -t registry.gitlab.com/ant.havrylov-group/examprep .
+docker push registry.gitlab.com/ant.havrylov-group/examprep
+
+docker build -t registry.gitlab.com/ant.havrylov-group/examprep-back .
+docker push registry.gitlab.com/ant.havrylov-group/examprep-back

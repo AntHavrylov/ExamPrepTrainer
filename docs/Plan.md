@@ -398,21 +398,25 @@ which also reverse-proxies API paths to the backend — mirroring
 **Goal:** runs on the internet, for free.
 
 ### Subtasks
-- [ ] DB: create free Postgres on Neon; get connection string
+- [x] DB: create free Postgres on Neon; get connection string
 - [ ] Backend: switch `DATABASE_URL` to Postgres; run Alembic migrations on deploy
-- [ ] Backend image built from the existing `backend/Dockerfile` and pushed to
-      **GitLab Container Registry** (`registry.gitlab.com`, free) instead of
-      Azure Container Registry
-- [ ] Deploy backend to Azure App Service (Free F1 tier) configured as a
-      "Container" Web App pulling from the GitLab Container Registry image;
-      secrets in App Service Application Settings (not in code)
-- [ ] Frontend image built from the existing `frontend/Dockerfile` and pushed to
+- [x] Backend image built from the existing `backend/Dockerfile` and pushed to
+      **GitLab Container Registry** (`registry.gitlab.com`, free, public project)
+      instead of Azure Container Registry
+- [x] Deploy backend to Azure App Service (Free F1 tier) configured as a
+      "Container" Web App pulling from the GitLab Container Registry image
+      (public project, no pull credentials needed); secrets in App Service
+      Application Settings (not in code)
+- [x] Frontend image built from the existing `frontend/Dockerfile` and pushed to
       **GitLab Container Registry**, same as the backend
-- [ ] Deploy frontend to Azure App Service (Free F1 tier) configured as a
-      "Container" Web App pulling from the GitLab Container Registry image;
-      backend URL baked in at build time (or proxied via `nginx.conf`, as in
-      Phase 9.5)
-- [ ] Configure CORS on the backend to allow the frontend App Service domain
+- [x] Deploy frontend to Azure App Service (Free F1 tier) configured as a
+      "Container" Web App pulling from the GitLab Container Registry image
+- [x] Frontend proxies API calls to the backend via `frontend/nginx.conf.template`
+      (envsubst-on-templates, `BACKEND_ORIGIN` env var) — browser only ever talks
+      to the frontend's own origin, so **no CORS middleware needed** on the
+      backend
+- [x] Set Azure App Setting `BACKEND_ORIGIN=https://<backend-app>.azurewebsites.net`
+      on the frontend Web App once the backend's real URL is known
 - [ ] Note in README/UI that the first request after idle may take ~20-30s
       (Free tier cold start) — applies to both services
 

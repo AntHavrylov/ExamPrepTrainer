@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
-import { api, clearTokens, getToken, setUnauthorizedHandler, storeTokens } from '../api'
+import { ACTIVE_SESSION_KEY, api, clearTokens, getToken, setUnauthorizedHandler, storeTokens } from '../api'
 
 const AuthContext = createContext(null)
 
@@ -11,6 +11,7 @@ export function AuthProvider({ children }) {
   const logout = useCallback(() => {
     api.logout().catch(() => {})
     clearTokens()
+    localStorage.removeItem(ACTIVE_SESSION_KEY)
     setTokenState(null)
     setUser(null)
   }, [])
@@ -50,8 +51,8 @@ export function AuthProvider({ children }) {
   }, [])
 
   const register = useCallback(
-    async (email, password) => {
-      await api.register(email, password)
+    async (email, password, language) => {
+      await api.register(email, password, language)
       await login(email, password)
     },
     [login],

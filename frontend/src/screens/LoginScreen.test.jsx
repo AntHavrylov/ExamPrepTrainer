@@ -1,14 +1,17 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { AuthProvider } from '../context/AuthContext'
+import { LanguageProvider } from '../context/LanguageContext'
 import LoginScreen from './LoginScreen'
 
 describe('LoginScreen', () => {
   it('renders the login form by default and toggles to register', () => {
     render(
-      <AuthProvider>
-        <LoginScreen />
-      </AuthProvider>,
+      <LanguageProvider>
+        <AuthProvider>
+          <LoginScreen />
+        </AuthProvider>
+      </LanguageProvider>,
     )
 
     expect(screen.getByRole('heading', { name: 'Log in' })).toBeInTheDocument()

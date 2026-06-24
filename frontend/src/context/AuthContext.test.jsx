@@ -1,5 +1,6 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { ACTIVE_SESSION_KEY } from '../api'
 import { AuthProvider, useAuth } from './AuthContext'
 
 function Probe() {
@@ -66,5 +67,35 @@ describe('AuthContext', () => {
     expect(screen.getByTestId('user')).toHaveTextContent('a@example.com')
     expect(localStorage.getItem('prep_trainer_token')).toBe('abc123')
     expect(localStorage.getItem('prep_trainer_refresh_token')).toBe('refresh-abc')
+  })
+
+  it('logout clears the persisted active training session', async () => {
+    localStorage.setItem('prep_trainer_token', 'abc123')
+    localStorage.setItem(ACTIVE_SESSION_KEY, '42')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url) => {
+        if (url === '/auth/me') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ id: 1, email: 'a@example.com', created_at: '2024-01-01' }),
+          })
+        }
+        throw new Error(`Unexpected fetch to ${url}`)
+      }),
+    )
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    )
+
+    await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'))
+
+    fireEvent.click(screen.getByText('logout'))
+
+    expect(localStorage.getItem(ACTIVE_SESSION_KEY)).toBeNull()
   })
 })
