@@ -25,8 +25,8 @@ them with feedback. Each user's data is private.
 | **Auth** | **FastAPI + JWT** (passlib/bcrypt) | Self-contained, no vendor lock |
 | AI | **OpenRouter** (OpenAI-compatible API) | One key, has `:free` models |
 | Tests | **pytest + httpx TestClient** | Standard, fast; AI client is mocked |
-| Deploy backend | **Render** / Railway / Fly.io (free) | Free tier |
-| Deploy frontend | **Vercel** / Netlify / Cloudflare Pages | Free |
+| Deploy backend | **Azure App Service** (Free F1 tier), container pulled from **GitLab Container Registry** | Free; reuses existing Azure account. No "Always On" on Free tier, so it idles and cold-starts (~20-30s) after inactivity. GitLab CR avoids Azure Container Registry's cost |
+| Deploy frontend | **Azure App Service** (Free F1 tier), container pulled from **GitLab Container Registry** | Free; same Azure account/subscription as the backend; uses existing `frontend/Dockerfile` (Nginx). Also idles/cold-starts (~20-30s) on Free tier |
 
 **Task types** (user choice): `technical`, `behavioral`, `mixed`.
 
@@ -400,9 +400,21 @@ which also reverse-proxies API paths to the backend — mirroring
 ### Subtasks
 - [ ] DB: create free Postgres on Neon; get connection string
 - [ ] Backend: switch `DATABASE_URL` to Postgres; run Alembic migrations on deploy
-- [ ] Deploy backend to Render; secrets in platform env (not in code)
-- [ ] Deploy frontend to Vercel; set backend URL
-- [ ] Configure CORS to allow the frontend domain
+- [ ] Backend image built from the existing `backend/Dockerfile` and pushed to
+      **GitLab Container Registry** (`registry.gitlab.com`, free) instead of
+      Azure Container Registry
+- [ ] Deploy backend to Azure App Service (Free F1 tier) configured as a
+      "Container" Web App pulling from the GitLab Container Registry image;
+      secrets in App Service Application Settings (not in code)
+- [ ] Frontend image built from the existing `frontend/Dockerfile` and pushed to
+      **GitLab Container Registry**, same as the backend
+- [ ] Deploy frontend to Azure App Service (Free F1 tier) configured as a
+      "Container" Web App pulling from the GitLab Container Registry image;
+      backend URL baked in at build time (or proxied via `nginx.conf`, as in
+      Phase 9.5)
+- [ ] Configure CORS on the backend to allow the frontend App Service domain
+- [ ] Note in README/UI that the first request after idle may take ~20-30s
+      (Free tier cold start) — applies to both services
 
 ### Definition of Done
 - Full flow works on production URLs
