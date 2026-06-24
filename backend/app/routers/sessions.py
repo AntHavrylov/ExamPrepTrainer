@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DBSession
@@ -95,6 +95,151 @@ def _matching_bank_rows(
     return [row for row in candidates if _scope_key(row.section_ids) == scope]
 
 
+# Tracks (user, mode, format, difficulty, language, scope) combinations currently
+# being topped up in the background, so a slow top-up can't be triggered twice
+# (e.g. once from session-start, once from the next low-watermark check) and
+# burn extra AI tokens generating questions nobody asked for yet.
+_replenishing: set[tuple] = set()
+
+
+def _pool_key(
+    user_id: int, mode: str, format_: str, difficulty: str, language: str, scope: list[int]
+) -> tuple:
+    return (user_id, mode, format_, difficulty, language, tuple(scope))
+
+
+def _bank_rows_from_batch(
+    generated_batch: list[dict],
+    user_id: int,
+    mode: str,
+    format_: str,
+    difficulty: str,
+    language: str,
+    scope: list[int],
+) -> list[QuestionBank]:
+    return [
+        QuestionBank(
+            user_id=user_id,
+            mode=mode,
+            format=format_,
+            difficulty=difficulty,
+            language=language,
+            section_ids=scope,
+            theme=item["theme"],
+            question=item["question"],
+            category=item["category"],
+            options=item.get("options"),
+            correct_index=item.get("correct_index"),
+            hint=item["hint"],
+            explanation=item["explanation"],
+        )
+        for item in generated_batch
+    ]
+
+
+async def _generate_batch(
+    sections: list[Section],
+    mode: str,
+    format_: str,
+    count: int,
+    ai_client: AIProvider,
+    difficulty: str,
+    avoid_themes: list[str],
+    language: str,
+) -> list[dict]:
+    if format_ == "quiz":
+        return await generate_quiz_questions(
+            sections, mode, count, ai_client, difficulty=difficulty, avoid_themes=avoid_themes, language=language
+        )
+    return await generate_questions(
+        sections, mode, count, ai_client, difficulty=difficulty, avoid_themes=avoid_themes, language=language
+    )
+
+
+async def _replenish_pool(
+    key: tuple,
+    user_id: int,
+    mode: str,
+    format_: str,
+    difficulty: str,
+    language: str,
+    scope: list[int],
+    section_ids: list[int],
+    avoid_themes: list[str],
+    ai_client: AIProvider,
+    session_factory,
+) -> None:
+    """Best-effort background top-up of a few questions for a pool that's about
+    to (or already did) run dry. Deliberately small (`background_question_batch_size`,
+    not the full reactive batch) and rate-limit-aware, since this is speculative
+    generation that may never get used if the user changes settings or stops -
+    keeping it small bounds how many tokens that speculation can waste.
+    """
+    try:
+        check_ai_rate_limit(user_id)
+    except HTTPException:
+        return
+
+    db = session_factory()
+    try:
+        sections = get_owned_sections(db, section_ids, user_id)
+        generated_batch = await _generate_batch(
+            sections,
+            mode,
+            format_,
+            settings.background_question_batch_size,
+            ai_client,
+            difficulty=difficulty,
+            avoid_themes=avoid_themes,
+            language=language,
+        )
+        new_rows = _bank_rows_from_batch(generated_batch, user_id, mode, format_, difficulty, language, scope)
+        db.add_all(new_rows)
+        db.commit()
+    except (AIClientError, MissingApiKeyError, HTTPException):
+        pass  # Best effort - the next live request just falls back to generating synchronously.
+    finally:
+        db.close()
+        _replenishing.discard(key)
+
+
+def _schedule_replenish_if_low(
+    background_tasks: BackgroundTasks,
+    matching: list[QuestionBank],
+    unused_after: int,
+    user_id: int,
+    mode: str,
+    format_: str,
+    difficulty: str,
+    language: str,
+    scope: list[int],
+    section_ids: list[int],
+    ai_client: AIProvider,
+    session_factory,
+) -> None:
+    if unused_after > 0 or settings.background_question_batch_size <= 0:
+        return
+    key = _pool_key(user_id, mode, format_, difficulty, language, scope)
+    if key in _replenishing:
+        return
+    _replenishing.add(key)
+    avoid_themes = [row.theme for row in matching]
+    background_tasks.add_task(
+        _replenish_pool,
+        key,
+        user_id,
+        mode,
+        format_,
+        difficulty,
+        language,
+        scope,
+        section_ids,
+        avoid_themes,
+        ai_client,
+        session_factory,
+    )
+
+
 def _attempt_to_result(
     attempt: Attempt,
     strengths: list[str] | None = None,
@@ -144,8 +289,11 @@ def _attempt_to_summary(attempt: Attempt) -> AttemptSummaryRead:
 @router.post("", response_model=SessionRead, status_code=status.HTTP_201_CREATED)
 def start_session(
     payload: StartSessionRequest,
+    background_tasks: BackgroundTasks,
     db: DBSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    ai_client: AIProvider = Depends(get_ai_client),
+    session_factory=Depends(get_session_factory),
 ) -> TrainingSession:
     get_owned_sections(db, payload.section_ids, current_user.id)
 
@@ -160,6 +308,31 @@ def start_session(
     db.add(session)
     db.commit()
     db.refresh(session)
+
+    # Pre-warm the pool only if it's genuinely empty (e.g. the very first
+    # session ever for this exact mode/format/difficulty/language/sections
+    # combination) - if anything is already sitting there unused, the user's
+    # first click is already covered and there's nothing to gain.
+    scope = _scope_key(payload.section_ids)
+    matching = _matching_bank_rows(
+        db, current_user.id, payload.mode, payload.format, payload.difficulty, current_user.language, scope
+    )
+    unused = sum(1 for row in matching if row.used_at is None)
+    _schedule_replenish_if_low(
+        background_tasks,
+        matching,
+        unused,
+        current_user.id,
+        payload.mode,
+        payload.format,
+        payload.difficulty,
+        current_user.language,
+        scope,
+        payload.section_ids,
+        ai_client,
+        session_factory,
+    )
+
     return session
 
 
@@ -180,9 +353,11 @@ def finish_session(
 @router.post("/{session_id}/next", response_model=NextQuestionRead)
 async def next_question(
     session_id: int,
+    background_tasks: BackgroundTasks,
     db: DBSession = Depends(get_db),
     current_user: User = Depends(enforce_ai_rate_limit),
     ai_client: AIProvider = Depends(get_ai_client),
+    session_factory=Depends(get_session_factory),
 ) -> NextQuestionRead:
     session = _get_owned_session(db, session_id, current_user.id)
     if session.finished_at is not None:
@@ -207,54 +382,32 @@ async def next_question(
         sections = get_owned_sections(db, session.section_ids, current_user.id)
         avoid_themes = [row.theme for row in matching]
         try:
-            if session.format == "quiz":
-                generated_batch = await generate_quiz_questions(
-                    sections,
-                    session.mode,
-                    settings.question_bank_batch_size,
-                    ai_client,
-                    difficulty=session.difficulty,
-                    avoid_themes=avoid_themes,
-                    language=current_user.language,
-                )
-            else:
-                generated_batch = await generate_questions(
-                    sections,
-                    session.mode,
-                    settings.question_bank_batch_size,
-                    ai_client,
-                    difficulty=session.difficulty,
-                    avoid_themes=avoid_themes,
-                    language=current_user.language,
-                )
+            generated_batch = await _generate_batch(
+                sections,
+                session.mode,
+                session.format,
+                settings.question_bank_batch_size,
+                ai_client,
+                difficulty=session.difficulty,
+                avoid_themes=avoid_themes,
+                language=current_user.language,
+            )
         except MissingApiKeyError as exc:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
         except AIClientError as exc:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
 
-        new_rows = [
-            QuestionBank(
-                user_id=current_user.id,
-                mode=session.mode,
-                format=session.format,
-                difficulty=session.difficulty,
-                language=current_user.language,
-                section_ids=scope,
-                theme=item["theme"],
-                question=item["question"],
-                category=item["category"],
-                options=item.get("options"),
-                correct_index=item.get("correct_index"),
-                hint=item["hint"],
-                explanation=item["explanation"],
-            )
-            for item in generated_batch
-        ]
+        new_rows = _bank_rows_from_batch(
+            generated_batch, current_user.id, session.mode, session.format, session.difficulty,
+            current_user.language, scope,
+        )
         db.add_all(new_rows)
         db.flush()
+        matching = matching + new_rows
         candidate = new_rows[0]
 
     candidate.used_at = datetime.now(timezone.utc)
+    unused_after = sum(1 for row in matching if row.used_at is None)
     attempt = Attempt(
         session_id=session.id,
         question=candidate.question,
@@ -269,6 +422,24 @@ async def next_question(
     db.add(attempt)
     db.commit()
     db.refresh(attempt)
+
+    # The pool just ran out (or is about to next time) - top it up quietly in
+    # the background so the next click usually doesn't have to wait on (or
+    # risk failing) a live generation call.
+    _schedule_replenish_if_low(
+        background_tasks,
+        matching,
+        unused_after,
+        current_user.id,
+        session.mode,
+        session.format,
+        session.difficulty,
+        current_user.language,
+        scope,
+        session.section_ids,
+        ai_client,
+        session_factory,
+    )
 
     return NextQuestionRead(
         attempt_id=attempt.id,

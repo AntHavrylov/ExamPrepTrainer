@@ -402,21 +402,25 @@ def test_update_session_length_persists_and_is_used_for_new_sessions(client, mak
     headers = make_user("sess-length-update@example.com")
     section_id = _create_section_with_document(client, headers)
 
-    update = client.put("/settings/session-length", json={"session_length": 7}, headers=headers)
+    update = client.put("/settings/session-length", json={"session_length": 10}, headers=headers)
     assert update.status_code == 200
-    assert update.json()["session_length"] == 7
+    assert update.json()["session_length"] == 10
 
     session_id = _start_session(client, headers, section_id, "open_ended")
     session = client.get(f"/sessions/{session_id}", headers=headers)
-    assert session.json()["target_question_count"] == 7
+    assert session.json()["target_question_count"] == 10
 
 
-def test_update_session_length_rejects_out_of_range(client, make_user):
+def test_update_session_length_accepts_only_five_ten_or_fifteen(client, make_user):
     headers = make_user("sess-length-range@example.com")
-    too_low = client.put("/settings/session-length", json={"session_length": 4}, headers=headers)
-    too_high = client.put("/settings/session-length", json={"session_length": 11}, headers=headers)
-    assert too_low.status_code == 422
-    assert too_high.status_code == 422
+    for valid in (5, 10, 15):
+        response = client.put("/settings/session-length", json={"session_length": valid}, headers=headers)
+        assert response.status_code == 200
+        assert response.json()["session_length"] == valid
+
+    for invalid in (4, 7, 11, 20):
+        response = client.put("/settings/session-length", json={"session_length": invalid}, headers=headers)
+        assert response.status_code == 422
 
 
 def test_next_question_reports_progress_and_blocks_past_the_target_count(client, make_user, monkeypatch):

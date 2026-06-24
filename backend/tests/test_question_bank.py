@@ -89,6 +89,7 @@ def _quiz_item(question: str, theme: str, options: list[str], correct_index: int
 
 def test_second_next_call_reuses_bank_without_ai_call(client, make_user, monkeypatch):
     monkeypatch.setattr(settings, "question_bank_batch_size", 2)
+    monkeypatch.setattr(settings, "background_question_batch_size", 0)
     headers = make_user("bank-reuse@example.com")
     section_id = _create_section_with_document(client, headers)
     session_id = _start_session(client, headers, [section_id])
@@ -115,6 +116,7 @@ def test_second_next_call_reuses_bank_without_ai_call(client, make_user, monkeyp
 
 def test_pool_exhaustion_triggers_one_more_batched_generation(client, make_user, monkeypatch):
     monkeypatch.setattr(settings, "question_bank_batch_size", 1)
+    monkeypatch.setattr(settings, "background_question_batch_size", 0)
     headers = make_user("bank-exhaust@example.com")
     section_id = _create_section_with_document(client, headers)
     session_id = _start_session(client, headers, [section_id])
@@ -134,6 +136,7 @@ def test_pool_exhaustion_triggers_one_more_batched_generation(client, make_user,
 
 def test_cross_session_reuse_same_scope(client, make_user, monkeypatch):
     monkeypatch.setattr(settings, "question_bank_batch_size", 2)
+    monkeypatch.setattr(settings, "background_question_batch_size", 0)
     headers = make_user("bank-cross-session@example.com")
     section_id = _create_section_with_document(client, headers)
 
@@ -163,6 +166,7 @@ def test_cross_session_reuse_same_scope(client, make_user, monkeypatch):
 
 def test_different_mode_does_not_share_pool(client, make_user, monkeypatch):
     monkeypatch.setattr(settings, "question_bank_batch_size", 1)
+    monkeypatch.setattr(settings, "background_question_batch_size", 0)
     headers = make_user("bank-mode-split@example.com")
     section_id = _create_section_with_document(client, headers)
 
@@ -187,6 +191,7 @@ def test_different_mode_does_not_share_pool(client, make_user, monkeypatch):
 
 def test_duplicate_section_ids_share_pool_and_are_stored_deduped(client, make_user, db_session, monkeypatch):
     monkeypatch.setattr(settings, "question_bank_batch_size", 2)
+    monkeypatch.setattr(settings, "background_question_batch_size", 0)
     headers = make_user("bank-dedup@example.com")
     section_id = _create_section_with_document(client, headers)
 
@@ -259,6 +264,7 @@ def test_difficulty_instruction_included_in_prompt():
 
 def test_different_difficulty_does_not_share_pool(client, make_user, monkeypatch):
     monkeypatch.setattr(settings, "question_bank_batch_size", 1)
+    monkeypatch.setattr(settings, "background_question_batch_size", 0)
     headers = make_user("bank-difficulty-split@example.com")
     section_id = _create_section_with_document(client, headers)
 
@@ -281,6 +287,7 @@ def test_different_difficulty_does_not_share_pool(client, make_user, monkeypatch
 
 def test_different_language_does_not_share_pool(client, make_user, monkeypatch):
     monkeypatch.setattr(settings, "question_bank_batch_size", 1)
+    monkeypatch.setattr(settings, "background_question_batch_size", 0)
     headers = make_user("bank-language-split@example.com")
     section_id = _create_section_with_document(client, headers)
 
@@ -367,3 +374,113 @@ def test_answer_exposes_explanation_for_quiz(client, make_user, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["explanation"] == item["explanation"]
+
+
+def test_start_session_prewarms_pool_in_background_when_empty(client, make_user, db_session, monkeypatch):
+    monkeypatch.setattr(settings, "background_question_batch_size", 2)
+    headers = make_user("bank-prewarm@example.com")
+    section_id = _create_section_with_document(client, headers)
+
+    batch_json = json.dumps(
+        [
+            _open_ended_item("What is the GIL?", "python gil"),
+            _open_ended_item("Explain decorators.", "decorators"),
+        ]
+    )
+    stub = _StubAIClient(batch_json)
+    _override_ai_client(stub)
+    try:
+        _start_session(client, headers, [section_id])
+    finally:
+        _clear_ai_override()
+
+    # Pre-warmed before any /next call was ever made.
+    assert stub.calls == 1
+    rows = list(db_session.scalars(select(QuestionBank)))
+    assert len(rows) == 2
+    assert all(row.used_at is None for row in rows)
+
+
+def test_next_question_replenishes_pool_in_background_once_it_runs_dry(
+    client, make_user, db_session, monkeypatch
+):
+    monkeypatch.setattr(settings, "question_bank_batch_size", 1)
+    monkeypatch.setattr(settings, "background_question_batch_size", 2)
+    headers = make_user("bank-replenish@example.com")
+    section_id = _create_section_with_document(client, headers)
+    session_id = _start_session(client, headers, [section_id])
+
+    single_json = json.dumps([_open_ended_item("What is the GIL?", "python gil")])
+    stub = _StubAIClient(single_json)
+    _override_ai_client(stub)
+    try:
+        response = client.post(f"/sessions/{session_id}/next", headers=headers)
+    finally:
+        _clear_ai_override()
+
+    assert response.status_code == 200
+    # One reactive call for the question actually served, one background call
+    # to top the pool back up - not more. (The stub always returns the same
+    # one-item canned response regardless of the requested count, so the
+    # background call adds exactly one more row here, not a full batch.)
+    assert stub.calls == 2
+
+    rows = list(db_session.scalars(select(QuestionBank)))
+    assert len(rows) == 2
+    unused = [row for row in rows if row.used_at is None]
+    assert len(unused) == 1
+
+
+def test_background_replenish_does_nothing_when_disabled(client, make_user, db_session, monkeypatch):
+    monkeypatch.setattr(settings, "question_bank_batch_size", 1)
+    monkeypatch.setattr(settings, "background_question_batch_size", 0)
+    headers = make_user("bank-replenish-disabled@example.com")
+    section_id = _create_section_with_document(client, headers)
+    session_id = _start_session(client, headers, [section_id])
+
+    single_json = json.dumps([_open_ended_item("What is the GIL?", "python gil")])
+    stub = _StubAIClient(single_json)
+    _override_ai_client(stub)
+    try:
+        client.post(f"/sessions/{session_id}/next", headers=headers)
+    finally:
+        _clear_ai_override()
+
+    assert stub.calls == 1
+    rows = list(db_session.scalars(select(QuestionBank)))
+    assert len(rows) == 1
+
+
+def test_background_replenish_skips_silently_when_rate_limited(
+    client, make_user, db_session, monkeypatch
+):
+    from app.config import settings as app_settings
+
+    monkeypatch.setattr(app_settings, "question_bank_batch_size", 1)
+    # Pre-warming at session start would itself consume the rate-limit budget
+    # we're about to set to 1, before this test's actual /next call even
+    # happens - disable it for session creation, then turn it back on only
+    # for the low-watermark check this test is actually exercising.
+    monkeypatch.setattr(app_settings, "background_question_batch_size", 0)
+    headers = make_user("bank-replenish-ratelimited@example.com")
+    section_id = _create_section_with_document(client, headers)
+    session_id = _start_session(client, headers, [section_id])
+
+    monkeypatch.setattr(app_settings, "background_question_batch_size", 2)
+    monkeypatch.setattr(app_settings, "ai_rate_limit_max_requests", 1)
+
+    single_json = json.dumps([_open_ended_item("What is the GIL?", "python gil")])
+    stub = _StubAIClient(single_json)
+    _override_ai_client(stub)
+    try:
+        response = client.post(f"/sessions/{session_id}/next", headers=headers)
+    finally:
+        _clear_ai_override()
+
+    # The foreground request itself stayed within the limit and succeeded...
+    assert response.status_code == 200
+    assert stub.calls == 1
+    # ...but the background top-up saw the bucket already at the limit and
+    # quietly skipped rather than erroring or spending another call.
+    rows = list(db_session.scalars(select(QuestionBank)))
+    assert len(rows) == 1
