@@ -1,8 +1,9 @@
 import re
 from collections.abc import AsyncIterator
 
-from app.ai.client import AIClientError, OpenRouterClient, get_ai_client
+from app.ai.client import AIClientError
 from app.ai.json_parsing import extract_json_value
+from app.ai.provider import AIProvider
 
 EVALUATION_TEMPERATURE = 0.0
 
@@ -77,10 +78,8 @@ async def evaluate_answer(
     question: str,
     answer: str,
     context: str,
-    ai_client: OpenRouterClient | None = None,
+    ai_client: AIProvider,
 ) -> dict:
-    client = ai_client or get_ai_client()
-
     user_prompt = (
         f"Knowledge base context:\n{context}\n\n"
         f"Interview question:\n{question}\n\n"
@@ -93,10 +92,10 @@ async def evaluate_answer(
         {"role": "user", "content": user_prompt},
     ]
 
-    raw = await client.complete(messages, temperature=EVALUATION_TEMPERATURE)
+    raw = await ai_client.complete(messages, temperature=EVALUATION_TEMPERATURE)
     evaluation = _parse_evaluation(raw)
     if evaluation is None:
-        raw = await client.complete(messages, temperature=EVALUATION_TEMPERATURE)
+        raw = await ai_client.complete(messages, temperature=EVALUATION_TEMPERATURE)
         evaluation = _parse_evaluation(raw)
     if evaluation is None:
         raise AIClientError("Could not parse AI response as JSON")
@@ -155,11 +154,9 @@ async def evaluate_answer_stream(
     question: str,
     answer: str,
     context: str,
-    ai_client: OpenRouterClient | None = None,
+    ai_client: AIProvider,
 ) -> AsyncIterator[tuple[str | None, dict | None]]:
     """Yields (delta_text, None) per streamed chunk, then (None, evaluation) once done."""
-    client = ai_client or get_ai_client()
-
     user_prompt = (
         f"Knowledge base context:\n{context}\n\n"
         f"Interview question:\n{question}\n\n"
@@ -172,13 +169,13 @@ async def evaluate_answer_stream(
     ]
 
     raw_parts: list[str] = []
-    async for delta in client.stream_complete(messages, temperature=EVALUATION_TEMPERATURE):
+    async for delta in ai_client.stream_complete(messages, temperature=EVALUATION_TEMPERATURE):
         raw_parts.append(delta)
         yield delta, None
 
     evaluation = _parse_stream_evaluation("".join(raw_parts))
     if evaluation is None:
-        raw = await client.complete(messages, temperature=EVALUATION_TEMPERATURE)
+        raw = await ai_client.complete(messages, temperature=EVALUATION_TEMPERATURE)
         evaluation = _parse_stream_evaluation(raw)
     if evaluation is None:
         raise AIClientError("Could not parse AI response in the expected format")

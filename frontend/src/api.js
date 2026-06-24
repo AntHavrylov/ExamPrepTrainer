@@ -231,4 +231,10 @@ export const api = {
   getSession: (sessionId) => request(`/sessions/${sessionId}`),
   listSessions: () => request('/sessions'),
   getStats: () => request('/sessions/stats'),
+
+  listModels: () => request('/settings/models'),
+  getApiKeyStatus: () => request('/settings/api-key'),
+  saveApiKey: (apiKey, model) =>
+    request('/settings/api-key', { method: 'PUT', body: { api_key: apiKey, model } }),
+  deleteApiKey: () => request('/settings/api-key', { method: 'DELETE' }),
 }

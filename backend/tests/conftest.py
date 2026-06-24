@@ -6,6 +6,17 @@ from sqlalchemy.pool import StaticPool
 
 from app.db import Base, get_db, get_session_factory
 from app.main import app
+from app.rate_limit import _hits as _ai_rate_limit_hits
+
+
+@pytest.fixture(autouse=True)
+def _clear_ai_rate_limit_buckets():
+    # Module-global and keyed by user id, which restarts at 1 in every test's
+    # fresh SQLite DB - without resetting it, hits accumulate across unrelated
+    # tests/files in the same run and can spuriously rate-limit a later test.
+    _ai_rate_limit_hits.clear()
+    yield
+    _ai_rate_limit_hits.clear()
 
 
 @pytest.fixture()

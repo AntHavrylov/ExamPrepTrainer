@@ -3,7 +3,9 @@ import asyncio
 import httpx
 import pytest
 
-from app.ai.client import AIClientError, OpenRouterClient
+from app.ai.client import AIClientError, MissingApiKeyError, OpenRouterClient, get_ai_client
+from app.models import User
+from app.user_api_keys import save_user_api_key
 
 
 def test_client_retries_on_429_then_succeeds():
@@ -147,3 +149,102 @@ def test_stream_complete_raises_when_api_key_missing():
 
     with pytest.raises(AIClientError):
         asyncio.run(_collect(client.stream_complete([{"role": "user", "content": "hi"}])))
+
+
+def test_list_models_returns_parsed_catalog():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {"id": "a/1", "name": "Model A", "context_length": 8192},
+                    {"id": "a/2", "context_length": None},
+                    {"not": "a model"},
+                ]
+            },
+        )
+
+    client = OpenRouterClient(
+        api_key="test-key", model="test-model", transport=httpx.MockTransport(handler)
+    )
+    models = asyncio.run(client.list_models())
+
+    assert models == [
+        {"id": "a/1", "name": "Model A", "context_length": 8192},
+        {"id": "a/2", "name": "a/2", "context_length": None},
+    ]
+
+
+def test_list_models_raises_on_error_status():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500)
+
+    client = OpenRouterClient(
+        api_key="test-key", model="test-model", transport=httpx.MockTransport(handler)
+    )
+
+    with pytest.raises(AIClientError):
+        asyncio.run(client.list_models())
+
+
+def test_validate_key_true_on_success():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["Authorization"] == "Bearer test-key"
+        return httpx.Response(200, json={"data": {"label": "test"}})
+
+    client = OpenRouterClient(
+        api_key="test-key", model="test-model", transport=httpx.MockTransport(handler)
+    )
+    assert asyncio.run(client.validate_key()) is True
+
+
+def test_validate_key_false_on_error_status():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"error": "invalid"})
+
+    client = OpenRouterClient(
+        api_key="bad-key", model="test-model", transport=httpx.MockTransport(handler)
+    )
+    assert asyncio.run(client.validate_key()) is False
+
+
+def test_validate_key_false_when_api_key_missing():
+    client = OpenRouterClient(api_key="", model="test-model")
+    assert asyncio.run(client.validate_key()) is False
+
+
+def test_get_ai_client_uses_stored_user_key(db_session):
+    user = User(email="key-user@example.com", hashed_password="x")
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+
+    save_user_api_key(db_session, user.id, "user-secret-key", "user/model")
+
+    client = get_ai_client(current_user=user, db=db_session)
+
+    assert client.api_key == "user-secret-key"
+    assert client.model == "user/model"
+
+
+def test_get_ai_client_has_no_key_without_stored_key(db_session):
+    user = User(email="no-key-user@example.com", hashed_password="x")
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+
+    client = get_ai_client(current_user=user, db=db_session)
+
+    assert client.api_key == ""
+
+
+def test_get_ai_client_without_stored_key_raises_on_use(db_session):
+    user = User(email="no-key-user-2@example.com", hashed_password="x")
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+
+    client = get_ai_client(current_user=user, db=db_session)
+
+    with pytest.raises(MissingApiKeyError):
+        asyncio.run(client.complete([{"role": "user", "content": "hi"}]))

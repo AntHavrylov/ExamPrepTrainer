@@ -178,3 +178,19 @@ class StatsRead(BaseModel):
     average_score: float | None
     score_history: list[ScorePoint]
     weakest_topics: list[TopicStat]
+
+
+class ApiKeyStatusRead(BaseModel):
+    has_key: bool
+    model: str | None = None
+
+
+class ApiKeySaveRequest(BaseModel):
+    api_key: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+
+
+class ModelOption(BaseModel):
+    id: str
+    name: str
+    context_length: int | None = None

@@ -3,28 +3,40 @@ import json
 from collections.abc import AsyncIterator
 
 import httpx
+from fastapi import Depends
+from sqlalchemy.orm import Session
 
-from app.config import settings
+from app.ai.provider import ModelInfo
+from app.auth.deps import get_current_user
+from app.db import get_db
+from app.models import User
+from app.user_api_keys import get_effective_credentials
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
+OPENROUTER_KEY_INFO_URL = "https://openrouter.ai/api/v1/auth/key"
 
 
 class AIClientError(Exception):
     """Raised when the AI provider cannot fulfill a request."""
 
 
+class MissingApiKeyError(AIClientError):
+    """Raised when a completion is attempted without a configured API key."""
+
+
 class OpenRouterClient:
     def __init__(
         self,
-        api_key: str | None = None,
-        model: str | None = None,
+        api_key: str = "",
+        model: str = "",
         timeout: float = 30.0,
         max_retries: int = 2,
         backoff_base: float = 0.5,
         transport: httpx.BaseTransport | None = None,
     ):
-        self.api_key = settings.openrouter_api_key if api_key is None else api_key
-        self.model = settings.openrouter_model if model is None else model
+        self.api_key = api_key
+        self.model = model
         self.timeout = timeout
         self.max_retries = max_retries
         self.backoff_base = backoff_base
@@ -32,7 +44,7 @@ class OpenRouterClient:
 
     async def complete(self, messages: list[dict[str, str]], temperature: float | None = None) -> str:
         if not self.api_key:
-            raise AIClientError("OpenRouter API key is not configured")
+            raise MissingApiKeyError("Add your OpenRouter API key in Settings before using AI features.")
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -75,7 +87,7 @@ class OpenRouterClient:
         self, messages: list[dict[str, str]], temperature: float | None = None
     ) -> AsyncIterator[str]:
         if not self.api_key:
-            raise AIClientError("OpenRouter API key is not configured")
+            raise MissingApiKeyError("Add your OpenRouter API key in Settings before using AI features.")
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -114,6 +126,71 @@ class OpenRouterClient:
         except httpx.HTTPError as exc:
             raise AIClientError(f"OpenRouter streaming request failed: {exc}") from exc
 
+    async def list_models(self) -> list[ModelInfo]:
+        async with httpx.AsyncClient(timeout=self.timeout, transport=self.transport) as http_client:
+            try:
+                response = await http_client.get(OPENROUTER_MODELS_URL)
+            except httpx.HTTPError as exc:
+                raise AIClientError(f"OpenRouter request failed: {exc}") from exc
 
-def get_ai_client() -> OpenRouterClient:
+            if response.status_code >= 400:
+                raise AIClientError(f"OpenRouter returned {response.status_code}")
+
+            data = response.json()
+
+        return [
+            {
+                "id": model["id"],
+                "name": model.get("name", model["id"]),
+                "context_length": model.get("context_length"),
+            }
+            for model in data.get("data", [])
+            if isinstance(model, dict) and "id" in model
+        ]
+
+    async def validate_key(self) -> bool:
+        if not self.api_key:
+            return False
+
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        async with httpx.AsyncClient(timeout=self.timeout, transport=self.transport) as http_client:
+            try:
+                response = await http_client.get(OPENROUTER_KEY_INFO_URL, headers=headers)
+            except httpx.HTTPError:
+                return False
+
+        return response.status_code < 400
+
+
+def get_ai_client(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> OpenRouterClient:
+    """Resolves the user's own OpenRouter key; there is no developer-key fallback.
+
+    Built eagerly even for requests that may not end up calling the AI provider
+    (e.g. quiz answers are scored deterministically), so the "no key configured"
+    case is intentionally left to surface lazily as `MissingApiKeyError` only when
+    `complete`/`stream_complete` is actually invoked, instead of blocking routes
+    that never needed a key in the first place.
+    """
+    credentials = get_effective_credentials(db, current_user.id)
+    if credentials is None:
+        return OpenRouterClient()
+    api_key, model = credentials
+    return OpenRouterClient(api_key=api_key, model=model)
+
+
+def get_default_ai_provider() -> OpenRouterClient:
+    """The developer-key provider, independent of any signed-in user's own key."""
     return OpenRouterClient()
+
+
+def get_ai_provider_factory() -> type[OpenRouterClient]:
+    """A constructor for a provider bound to caller-supplied credentials.
+
+    Used where a request itself carries the key to operate with (e.g.
+    validating a candidate key before it's saved), so no FastAPI dependency
+    can supply the instance up front.
+    """
+    return OpenRouterClient

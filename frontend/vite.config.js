@@ -13,6 +13,7 @@ export default defineConfig({
       '/documents': BACKEND_URL,
       '/ai': BACKEND_URL,
       '/sessions': BACKEND_URL,
+      '/settings': BACKEND_URL,
       '/health': BACKEND_URL,
     },
     // WSL2 + a /mnt/* (9p/DrvFs) project path doesn't deliver inotify events,

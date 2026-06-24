@@ -12,11 +12,10 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 14
 
+    api_key_encryption_key: str
+
     max_document_content_length: int = 20000
     max_sections_per_user: int = 50
-
-    openrouter_api_key: str = ""
-    openrouter_model: str = "openai/gpt-oss-120b:free"
 
     max_questions_per_generate: int = 20
     max_generation_context_chars: int = 12000

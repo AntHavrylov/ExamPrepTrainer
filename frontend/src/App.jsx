@@ -9,6 +9,7 @@ import StartTrainingScreen from './screens/StartTrainingScreen'
 import TrainingScreen from './screens/TrainingScreen'
 import SummaryScreen from './screens/SummaryScreen'
 import ProgressScreen from './screens/ProgressScreen'
+import SettingsScreen from './screens/SettingsScreen'
 
 function AppShell() {
   const { token, user, authLoading, logout } = useAuth()
@@ -45,7 +46,8 @@ function AppShell() {
     else setView(target)
   }
 
-  const activeNav = view === 'sections' || view === 'progress' ? view : 'start-training'
+  const activeNav =
+    view === 'sections' || view === 'progress' || view === 'settings' ? view : 'start-training'
 
   return (
     <div className="app-shell">
@@ -62,6 +64,7 @@ function AppShell() {
             <SummaryScreen sessionId={sessionId} onDone={goToSections} />
           )}
           {view === 'progress' && <ProgressScreen />}
+          {view === 'settings' && <SettingsScreen />}
         </div>
       </main>
     </div>

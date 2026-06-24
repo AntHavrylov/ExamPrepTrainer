@@ -17,6 +17,13 @@ def test_ping_requires_authentication(client):
     assert response.status_code == 401
 
 
+def test_ping_requires_a_configured_api_key(client, make_user):
+    headers = make_user("ai-no-key@example.com")
+    response = client.get("/ai/ping", headers=headers)
+    assert response.status_code == 403
+    assert "API key" in response.json()["detail"]
+
+
 def test_ping_returns_canned_response_with_mocked_client(client, make_user):
     headers = make_user("ai-ping@example.com")
     app.dependency_overrides[get_ai_client] = lambda: _StubAIClient()

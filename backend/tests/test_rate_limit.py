@@ -9,13 +9,6 @@ from app.main import app
 from app.rate_limit import _hits, check_ai_rate_limit
 
 
-@pytest.fixture(autouse=True)
-def _clear_rate_limit_buckets():
-    _hits.clear()
-    yield
-    _hits.clear()
-
-
 def test_check_ai_rate_limit_allows_up_to_the_max(monkeypatch):
     monkeypatch.setattr(settings, "ai_rate_limit_max_requests", 3)
     monkeypatch.setattr(settings, "ai_rate_limit_window_seconds", 60)

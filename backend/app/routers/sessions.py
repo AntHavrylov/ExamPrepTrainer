@@ -6,10 +6,11 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DBSession
 
-from app.ai.client import AIClientError, OpenRouterClient, get_ai_client
+from app.ai.client import AIClientError, MissingApiKeyError, get_ai_client
 from app.ai.context import build_context
 from app.ai.evaluate import evaluate_answer, evaluate_answer_stream
 from app.ai.generate import generate_questions, generate_quiz_questions
+from app.ai.provider import AIProvider
 from app.auth.deps import get_current_user
 from app.config import settings
 from app.db import get_db, get_session_factory
@@ -136,7 +137,7 @@ async def next_question(
     session_id: int,
     db: DBSession = Depends(get_db),
     current_user: User = Depends(enforce_ai_rate_limit),
-    ai_client: OpenRouterClient = Depends(get_ai_client),
+    ai_client: AIProvider = Depends(get_ai_client),
 ) -> NextQuestionRead:
     session = _get_owned_session(db, session_id, current_user.id)
     scope = _scope_key(session.section_ids)
@@ -168,6 +169,8 @@ async def next_question(
                     difficulty=session.difficulty,
                     avoid_themes=avoid_themes,
                 )
+        except MissingApiKeyError as exc:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
         except AIClientError as exc:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
 
@@ -223,7 +226,7 @@ async def answer(
     payload: AnswerRequest,
     db: DBSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    ai_client: OpenRouterClient = Depends(get_ai_client),
+    ai_client: AIProvider = Depends(get_ai_client),
 ) -> AnswerResultRead:
     session = _get_owned_session(db, session_id, current_user.id)
 
@@ -275,6 +278,8 @@ async def answer(
 
     try:
         evaluation = await evaluate_answer(attempt.question, payload.answer, context, ai_client)
+    except MissingApiKeyError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
     except AIClientError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
 
@@ -312,7 +317,7 @@ async def answer_stream(
     payload: AnswerRequest,
     db: DBSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    ai_client: OpenRouterClient = Depends(get_ai_client),
+    ai_client: AIProvider = Depends(get_ai_client),
     session_factory=Depends(get_session_factory),
 ) -> StreamingResponse:
     session = _get_owned_session(db, session_id, current_user.id)

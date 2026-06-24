@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.ai.client import AIClientError, OpenRouterClient, get_ai_client
+from app.ai.client import AIClientError, MissingApiKeyError, get_ai_client
 from app.ai.context import build_context
 from app.ai.evaluate import evaluate_answer
 from app.ai.generate import generate_questions
+from app.ai.provider import AIProvider
 from app.config import settings
 from app.db import get_db
 from app.models import User
@@ -23,10 +24,12 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 @router.get("/ping")
 async def ping(
     current_user: User = Depends(enforce_ai_rate_limit),
-    ai_client: OpenRouterClient = Depends(get_ai_client),
+    ai_client: AIProvider = Depends(get_ai_client),
 ) -> dict[str, str]:
     try:
         text = await ai_client.complete([{"role": "user", "content": "Say hello in one word"}])
+    except MissingApiKeyError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
     except AIClientError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
     return {"response": text}
@@ -37,12 +40,14 @@ async def generate(
     payload: GenerateQuestionsRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(enforce_ai_rate_limit),
-    ai_client: OpenRouterClient = Depends(get_ai_client),
+    ai_client: AIProvider = Depends(get_ai_client),
 ) -> list[dict[str, str]]:
     sections = get_owned_sections(db, payload.section_ids, current_user.id)
 
     try:
         return await generate_questions(sections, payload.mode, payload.count, ai_client)
+    except MissingApiKeyError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
     except AIClientError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
 
@@ -52,7 +57,7 @@ async def evaluate(
     payload: EvaluateAnswerRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(enforce_ai_rate_limit),
-    ai_client: OpenRouterClient = Depends(get_ai_client),
+    ai_client: AIProvider = Depends(get_ai_client),
 ) -> dict:
     sections = get_owned_sections(db, payload.section_ids, current_user.id)
     context = build_context(
@@ -61,5 +66,7 @@ async def evaluate(
 
     try:
         return await evaluate_answer(payload.question, payload.answer, context, ai_client)
+    except MissingApiKeyError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
     except AIClientError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))

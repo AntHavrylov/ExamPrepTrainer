@@ -1,6 +1,7 @@
-from app.ai.client import AIClientError, OpenRouterClient, get_ai_client
+from app.ai.client import AIClientError
 from app.ai.context import build_context
 from app.ai.json_parsing import extract_json_value
+from app.ai.provider import AIProvider
 from app.config import settings
 from app.models import Section
 
@@ -85,11 +86,10 @@ async def generate_questions(
     sections: list[Section],
     mode: str,
     count: int,
-    ai_client: OpenRouterClient | None = None,
+    ai_client: AIProvider,
     difficulty: str = "medium",
     avoid_themes: list[str] | None = None,
 ) -> list[dict[str, str]]:
-    client = ai_client or get_ai_client()
     context = build_context(sections, settings.max_generation_context_chars, query=MODE_INSTRUCTIONS[mode])
 
     user_prompt = (
@@ -104,10 +104,10 @@ async def generate_questions(
         {"role": "user", "content": user_prompt},
     ]
 
-    raw = await client.complete(messages)
+    raw = await ai_client.complete(messages)
     questions = _parse_questions(raw)
     if questions is None:
-        raw = await client.complete(messages)
+        raw = await ai_client.complete(messages)
         questions = _parse_questions(raw)
     if questions is None:
         raise AIClientError("Could not parse AI response as JSON")
@@ -162,11 +162,10 @@ async def generate_quiz_questions(
     sections: list[Section],
     mode: str,
     count: int,
-    ai_client: OpenRouterClient | None = None,
+    ai_client: AIProvider,
     difficulty: str = "medium",
     avoid_themes: list[str] | None = None,
 ) -> list[dict]:
-    client = ai_client or get_ai_client()
     context = build_context(sections, settings.max_generation_context_chars, query=MODE_INSTRUCTIONS[mode])
 
     user_prompt = (
@@ -181,10 +180,10 @@ async def generate_quiz_questions(
         {"role": "user", "content": user_prompt},
     ]
 
-    raw = await client.complete(messages)
+    raw = await ai_client.complete(messages)
     questions = _parse_quiz_questions(raw)
     if questions is None:
-        raw = await client.complete(messages)
+        raw = await ai_client.complete(messages)
         questions = _parse_quiz_questions(raw)
     if questions is None:
         raise AIClientError("Could not parse AI response as JSON")
