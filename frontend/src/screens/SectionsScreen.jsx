@@ -13,6 +13,18 @@ export default function SectionsScreen() {
   const [docTitle, setDocTitle] = useState('')
   const [docContent, setDocContent] = useState('')
   const [editingDocId, setEditingDocId] = useState(null)
+  const [expandedDocIds, setExpandedDocIds] = useState(() => new Set())
+
+  const DOC_PREVIEW_LEN = 150
+
+  function toggleDocExpand(id) {
+    setExpandedDocIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   useEffect(() => {
     api
@@ -46,6 +58,7 @@ export default function SectionsScreen() {
 
   async function openSection(id) {
     setError(null)
+    setExpandedDocIds(new Set())
     try {
       const data = await api.getSection(id)
       setSelectedSection(data)
@@ -184,18 +197,31 @@ export default function SectionsScreen() {
         <section>
           <h3>{selectedSection.name}</h3>
           <ul className="document-list">
-            {selectedSection.documents.map((doc) => (
-              <li key={doc.id}>
-                <strong>{doc.title}</strong>
-                <p>{doc.content}</p>
-                <button className="btn-secondary" onClick={() => startEditDocument(doc)}>
-                  {t('sections.editBtn')}
-                </button>
-                <button className="btn-danger" onClick={() => handleDeleteDocument(doc.id)}>
-                  {t('sections.deleteBtn')}
-                </button>
-              </li>
-            ))}
+            {selectedSection.documents.map((doc) => {
+              const isLong = doc.content.length > DOC_PREVIEW_LEN
+              const isExpanded = expandedDocIds.has(doc.id)
+              return (
+                <li key={doc.id}>
+                  <strong>{doc.title}</strong>
+                  <p className="doc-preview">
+                    {isLong && !isExpanded ? doc.content.slice(0, DOC_PREVIEW_LEN) + '…' : doc.content}
+                  </p>
+                  {isLong && (
+                    <button type="button" className="btn-link" onClick={() => toggleDocExpand(doc.id)}>
+                      {isExpanded ? t('sections.showLess') : t('sections.showMore')}
+                    </button>
+                  )}
+                  <div className="doc-actions">
+                    <button className="btn-secondary" onClick={() => startEditDocument(doc)}>
+                      {t('sections.editBtn')}
+                    </button>
+                    <button className="btn-danger" onClick={() => handleDeleteDocument(doc.id)}>
+                      {t('sections.deleteBtn')}
+                    </button>
+                  </div>
+                </li>
+              )
+            })}
             {selectedSection.documents.length === 0 && <li>{t('sections.notesNone')}</li>}
           </ul>
 
@@ -213,6 +239,9 @@ export default function SectionsScreen() {
               rows={6}
               required
             />
+            <p className="char-counter">
+              {docContent.length.toLocaleString()} / 50,000
+            </p>
             <button type="submit">{editingDocId ? t('sections.saveChanges') : t('sections.addNotes')}</button>
             {editingDocId && (
               <button type="button" className="btn-secondary" onClick={resetDocForm}>

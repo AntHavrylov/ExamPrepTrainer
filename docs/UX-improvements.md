@@ -33,32 +33,38 @@ File: `StartTrainingScreen.jsx`
 
 ---
 
-## Suggested next improvements (not yet implemented)
+## Also implemented in second session
 
 ### "Train this topic" on Progress weakest topics
-Clicking a topic in the weakest-topics list could navigate straight to Start Training with that section pre-selected.
-**Effort:** medium — requires lifting the `navigate` callback and passing the pre-selected section id into `StartTrainingScreen`.
+Each topic in the weakest-topics list now has a "Train this topic" link.
+Click → writes the section id to a one-shot `localStorage` key → navigates to Start Training → sections load, key is read + cleared → that section is pre-selected.
+Files: `App.jsx`, `ProgressScreen.jsx`, `StartTrainingScreen.jsx`, `constants.js`
 
 ### Success toast after Settings saves
-The API key, language, and session-length saves succeed silently. A brief "Saved ✓" inline confirmation (auto-dismiss after 2 s) would reassure users that the change took.
-**Effort:** small — local `savedAt` state + `setTimeout` to clear it.
+Language, session-length, and API-key saves all show a brief "Saved ✓" message (green, auto-clears after 2 s).
+File: `SettingsScreen.jsx`
 
 ### "Train again" button on Summary screen
-After finishing a session the user lands on the summary but must manually navigate back to Train and re-pick the same settings. A "Train again with same settings" button would reduce friction.
-**Effort:** small — pass `session.mode / format / section_ids` back from Summary to App and pre-fill Start Training.
+Summary screen now has a "Train again with same settings" button. It writes the session's `section_ids / mode / format / difficulty` to `lastTrainingSettings` localStorage and navigates to Start Training, which reads them on mount.
+Files: `App.jsx`, `SummaryScreen.jsx`
 
-### Session length "custom" input
-The current options are fixed at 5 / 10 / 15 questions. A small number input for arbitrary lengths (bounded, say 1–50) would suit users who want a quick 3-question warmup or a 20-question deep dive.
-**Effort:** small — swap the `<select>` for a `<input type="number">` with min/max.
+### Session length custom number input
+Settings replaced the fixed 5 / 10 / 15 `<select>` with a `<input type="number" min="1" max="50">` plus a Save button.
+Backend `SessionLengthUpdate` schema widened from `Literal[5,10,15]` to `int = Field(ge=1, le=50)`.
+Files: `SettingsScreen.jsx`, `backend/app/schemas.py`
 
 ### Document preview in Sections list
-The Sections screen shows full document content which can be very long. A truncated preview (first 150 chars) with a "Show more" toggle would keep the list scannable.
-**Effort:** small — CSS line-clamp + a local `expanded` state per document.
+Documents with >150 characters are now truncated. A "Show more / Show less" toggle expands/collapses per document. Expanded state resets when switching to a different section.
+File: `SectionsScreen.jsx`
+
+---
+
+## Remaining ideas (not yet implemented)
 
 ### Progress filtering by time range
-The score chart always shows the full history. A simple "Last 30 days / All time" toggle would help users who have been using the app for months see recent momentum.
-**Effort:** medium — filter `score_history` client-side by a date cutoff.
+A simple "Last 30 days / All time" toggle on the score chart.
+**Effort:** small — filter `score_history` client-side by a date cutoff.
 
 ### Question Bank — bulk delete
-Currently questions can only be deleted one at a time. Checkboxes + a "Delete selected" button would help with cleaning up stale batches.
+Checkboxes + a "Delete selected" button to remove stale batches at once.
 **Effort:** medium — adds selection state and a bulk delete API call.

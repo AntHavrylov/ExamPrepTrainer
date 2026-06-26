@@ -4,8 +4,6 @@ import { useAuth } from '../context/AuthContext'
 import { useLanguage } from '../context/LanguageContext'
 import { LANGUAGE_NATIVE_NAMES, SUPPORTED_LANGUAGES } from '../i18n/translations'
 
-const SESSION_LENGTH_OPTIONS = [5, 10, 15]
-
 export default function SettingsScreen() {
   const { user } = useAuth()
   const { language, setLanguage, t } = useLanguage()
@@ -13,6 +11,7 @@ export default function SettingsScreen() {
   const [models, setModels] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [toast, setToast] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [selectedModel, setSelectedModel] = useState('')
   const [modelFilter, setModelFilter] = useState('')
@@ -21,6 +20,11 @@ export default function SettingsScreen() {
   const [savingLanguage, setSavingLanguage] = useState(false)
   const [sessionLength, setSessionLength] = useState(user?.session_length ?? 5)
   const [savingSessionLength, setSavingSessionLength] = useState(false)
+
+  function showToast() {
+    setToast(t('common.saved'))
+    setTimeout(() => setToast(''), 2000)
+  }
 
   useEffect(() => {
     Promise.all([api.getApiKeyStatus(), api.listModels()])
@@ -59,6 +63,7 @@ export default function SettingsScreen() {
       const updated = await api.saveApiKey(apiKey, selectedModel)
       setStatus(updated)
       setApiKey('')
+      showToast()
     } catch (err) {
       setError(err.message)
     } finally {
@@ -87,6 +92,7 @@ export default function SettingsScreen() {
     try {
       await api.updateLanguage(next)
       setLanguage(next)
+      showToast()
     } catch (err) {
       setError(err.message)
     } finally {
@@ -94,13 +100,17 @@ export default function SettingsScreen() {
     }
   }
 
-  async function handleSessionLengthChange(e) {
-    const next = Number(e.target.value)
+  function handleSessionLengthChange(e) {
+    setSessionLength(Number(e.target.value))
+  }
+
+  async function handleSessionLengthSave(e) {
+    e.preventDefault()
     setError(null)
     setSavingSessionLength(true)
     try {
-      await api.updateSessionLength(next)
-      setSessionLength(next)
+      await api.updateSessionLength(sessionLength)
+      showToast()
     } catch (err) {
       setError(err.message)
     } finally {
@@ -121,6 +131,8 @@ export default function SettingsScreen() {
         </p>
       )}
 
+      {toast && <p className="settings-toast" aria-live="polite">{toast}</p>}
+
       <section className="settings-panel">
         <label>
           {t('settings.languageTitle')}
@@ -138,20 +150,24 @@ export default function SettingsScreen() {
       <p className="settings-intro">{t('settings.sessionLengthIntro')}</p>
 
       <section className="settings-panel">
-        <label>
-          {t('settings.sessionLengthTitle')}
-          <select
-            value={sessionLength}
-            onChange={handleSessionLengthChange}
-            disabled={savingSessionLength}
-          >
-            {SESSION_LENGTH_OPTIONS.map((n) => (
-              <option key={n} value={n}>
-                {t('settings.sessionLengthQuestions', { n })}
-              </option>
-            ))}
-          </select>
-        </label>
+        <form onSubmit={handleSessionLengthSave} className="settings-form">
+          <label>
+            {t('settings.sessionLengthTitle')}
+            <input
+              type="number"
+              min={1}
+              max={50}
+              value={sessionLength}
+              onChange={handleSessionLengthChange}
+              disabled={savingSessionLength}
+              className="session-length-input"
+            />
+          </label>
+          <p className="settings-sub">{t('settings.sessionLengthRange')}</p>
+          <button type="submit" disabled={savingSessionLength}>
+            {savingSessionLength ? t('settings.saving') : t('settings.sessionLengthSave')}
+          </button>
+        </form>
       </section>
 
       <h2>{t('settings.title')}</h2>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { useLanguage } from '../context/LanguageContext'
 import { LANGUAGE_NATIVE_NAMES } from '../i18n/translations'
+import { LAST_TRAINING_SETTINGS_KEY, PRE_SELECT_SECTIONS_KEY } from '../constants'
 
 const MODE_KEYS = {
   technical: 'enums.modeTechnical',
@@ -20,11 +21,9 @@ const DIFFICULTY_KEYS = {
   hard: 'enums.difficultyHard',
 }
 
-const SETTINGS_KEY = 'lastTrainingSettings'
-
 function loadSavedSettings() {
   try {
-    const raw = localStorage.getItem(SETTINGS_KEY)
+    const raw = localStorage.getItem(LAST_TRAINING_SETTINGS_KEY)
     return raw ? JSON.parse(raw) : null
   } catch {
     return null
@@ -49,7 +48,17 @@ export default function StartTrainingScreen({ onStarted, onNavigate }) {
   useEffect(() => {
     api
       .listSections()
-      .then(setSections)
+      .then((data) => {
+        setSections(data)
+        try {
+          const raw = localStorage.getItem(PRE_SELECT_SECTIONS_KEY)
+          if (raw) {
+            const ids = JSON.parse(raw)
+            setSelectedIds(ids.filter((id) => data.some((s) => s.id === id)))
+            localStorage.removeItem(PRE_SELECT_SECTIONS_KEY)
+          }
+        } catch {}
+      })
       .catch((err) => setError(err.message))
   }, [])
 
@@ -72,7 +81,7 @@ export default function StartTrainingScreen({ onStarted, onNavigate }) {
     setError(null)
     setNoQuestions(null)
     setStarting(true)
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ selectedIds, mode, format, difficulty }))
+    localStorage.setItem(LAST_TRAINING_SETTINGS_KEY, JSON.stringify({ selectedIds, mode, format, difficulty }))
     try {
       const session = await api.startSession(selectedIds, mode, format, difficulty)
       onStarted(session.id)

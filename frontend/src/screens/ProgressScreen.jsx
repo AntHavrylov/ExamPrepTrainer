@@ -39,7 +39,7 @@ const TREND_KEYS = {
   unknown: 'progress.trendUnknown',
 }
 
-export default function ProgressScreen() {
+export default function ProgressScreen({ onTrainSection }) {
   const { t } = useLanguage()
   const [stats, setStats] = useState(null)
   const [error, setError] = useState(null)
@@ -169,6 +169,15 @@ export default function ProgressScreen() {
               </span>
             </span>
             <span className="topic-score">{topic.average_score.toFixed(1)} / 10</span>
+            {onTrainSection && (
+              <button
+                type="button"
+                className="btn-link topic-train-btn"
+                onClick={() => onTrainSection(topic.section_id)}
+              >
+                {t('progress.trainTopic')}
+              </button>
+            )}
           </li>
         ))}
       </ul>

@@ -36,15 +36,65 @@ export function clearTokens() {
   setRefreshToken(null)
 }
 
+const FIELD_LABELS = {
+  content: 'Notes',
+  title: 'Title',
+  name: 'Name',
+  description: 'Description',
+  session_length: 'Session length',
+  count: 'Count',
+  answer: 'Answer',
+  email: 'Email',
+  password: 'Password',
+  section_ids: 'Sections',
+  selected_index: 'Answer choice',
+  api_key: 'API key',
+  model: 'Model',
+  language: 'Language',
+  mode: 'Mode',
+  format: 'Format',
+  difficulty: 'Difficulty',
+}
+
+function humanizeValidationErrors(errors) {
+  return errors
+    .map((err) => {
+      const parts = Array.isArray(err.loc) ? err.loc.filter((p) => p !== 'body' && p !== 'query') : []
+      const rawField = parts.length ? String(parts[parts.length - 1]) : ''
+      const field = FIELD_LABELS[rawField] || rawField || 'Value'
+      switch (err.type) {
+        case 'string_too_long':
+          return `${field} is too long (max ${Number(err.ctx?.max_length).toLocaleString()} characters)`
+        case 'string_too_short':
+          return err.ctx?.min_length === 1 ? `${field} cannot be empty` : `${field} is too short`
+        case 'missing':
+          return `${field} is required`
+        case 'greater_than_equal':
+          return `${field} must be at least ${err.ctx?.ge}`
+        case 'less_than_equal':
+          return `${field} must be at most ${err.ctx?.le}`
+        case 'int_parsing':
+          return `${field} must be a number`
+        default:
+          return err.msg || 'Invalid value'
+      }
+    })
+    .join('; ')
+}
+
 export class ApiError extends Error {
   constructor(status, detail) {
-    // `detail` may be a plain string (most errors) or a structured object
-    // (e.g. the "no questions for this combination" guard, which carries the
-    // failing parameters). Keep the human-readable string in `message` either
-    // way, and expose the structured payload on `detail` for callers that want
-    // to render something richer than a flat error line.
-    const message = typeof detail === 'string' ? detail : detail?.message
-    super(message || `Request failed with status ${status}`)
+    // `detail` may be a plain string, a Pydantic validation array, or a
+    // structured object (e.g. the "no questions" guard with a `code` field).
+    let message
+    if (typeof detail === 'string') {
+      message = detail
+    } else if (Array.isArray(detail)) {
+      message = humanizeValidationErrors(detail)
+    } else {
+      message = detail?.message || null
+    }
+    super(message || `HTTP ${status}`)
     this.status = status
     this.detail = detail
   }

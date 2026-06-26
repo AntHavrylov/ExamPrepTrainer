@@ -32,7 +32,7 @@ class LanguageUpdate(BaseModel):
 
 
 class SessionLengthUpdate(BaseModel):
-    session_length: Literal[5, 10, 15]
+    session_length: int = Field(ge=1, le=50)
 
 
 class Token(BaseModel):

@@ -3,6 +3,7 @@ import './App.css'
 import ThemeToggle from './components/ThemeToggle'
 import Sidebar from './components/Sidebar'
 import { ACTIVE_SESSION_KEY } from './api'
+import { LAST_TRAINING_SETTINGS_KEY, PRE_SELECT_SECTIONS_KEY } from './constants'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { LanguageProvider, useLanguage } from './context/LanguageContext'
 import LoginScreen from './screens/LoginScreen'
@@ -60,6 +61,20 @@ function AppShell() {
     setView('sections')
   }
 
+  function goToTrainForSection(sectionId) {
+    try { localStorage.setItem(PRE_SELECT_SECTIONS_KEY, JSON.stringify([sectionId])) } catch {}
+    navigate('start-training')
+  }
+
+  function goToTrainAgain({ selectedIds, mode, format, difficulty }) {
+    try {
+      localStorage.setItem(LAST_TRAINING_SETTINGS_KEY, JSON.stringify({ selectedIds, mode, format, difficulty }))
+    } catch {}
+    setSessionId(null)
+    localStorage.removeItem(ACTIVE_SESSION_KEY)
+    setView('start-training')
+  }
+
   function navigate(target) {
     if (target === 'start-training' && sessionId) {
       // A session is still in progress - resume it instead of opening the
@@ -90,9 +105,9 @@ function AppShell() {
             <TrainingScreen sessionId={sessionId} onFinish={goToSummary} onInterrupt={goToSections} />
           )}
           {view === 'summary' && sessionId && (
-            <SummaryScreen sessionId={sessionId} onDone={goToSections} />
+            <SummaryScreen sessionId={sessionId} onDone={goToSections} onTrainAgain={goToTrainAgain} />
           )}
-          {view === 'progress' && <ProgressScreen />}
+          {view === 'progress' && <ProgressScreen onTrainSection={goToTrainForSection} />}
           {view === 'settings' && <SettingsScreen />}
           {view === 'question-bank' && <QuestionBankScreen />}
         </div>

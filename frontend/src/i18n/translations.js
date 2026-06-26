@@ -9,6 +9,7 @@ export const LANGUAGE_NATIVE_NAMES = {
 export const translations = {
   en: {
     'common.loading': 'Loading...',
+    'common.saved': 'Saved ✓',
 
     'nav.sections': 'Sections',
     'nav.train': 'Train',
@@ -49,6 +50,8 @@ export const translations = {
     'sections.addNotes': 'Add notes',
     'sections.cancel': 'Cancel',
     'sections.importLabel': 'Or import a .md/.txt file:',
+    'sections.showMore': 'Show more',
+    'sections.showLess': 'Show less',
 
     'enums.modeTechnical': 'Technical',
     'enums.modeBehavioral': 'Behavioral',
@@ -115,6 +118,7 @@ export const translations = {
     'summary.explanation': 'Explanation: {text}',
     'summary.none': 'No answered questions yet.',
     'summary.back': 'Back to sections',
+    'summary.trainAgain': 'Train again with same settings',
     'summary.loading': 'Loading summary...',
 
     'progress.loading': 'Loading progress...',
@@ -135,6 +139,7 @@ export const translations = {
     'progress.trendUnknown': 'Not enough data yet',
     'progress.chartCaption': 'Each point is one scored answer, oldest to newest.',
     'progress.chartAverageLabel': 'Your average ({score} / 10)',
+    'progress.trainTopic': 'Train this topic',
 
     'settings.loading': 'Loading settings...',
     'settings.title': 'AI settings',
@@ -159,6 +164,8 @@ export const translations = {
     'settings.sessionLengthIntro': 'Choose how many questions each new training session includes.',
     'settings.sessionLengthSaving': 'Saving...',
     'settings.sessionLengthQuestions': '{n} questions',
+    'settings.sessionLengthRange': '1 – 50 questions per session',
+    'settings.sessionLengthSave': 'Save',
 
     'questionBank.title': 'Question Bank',
     'questionBank.intro':
@@ -185,6 +192,7 @@ export const translations = {
 
   uk: {
     'common.loading': 'Завантаження...',
+    'common.saved': 'Збережено ✓',
 
     'nav.sections': 'Розділи',
     'nav.train': 'Тренування',
@@ -225,6 +233,8 @@ export const translations = {
     'sections.addNotes': 'Додати нотатки',
     'sections.cancel': 'Скасувати',
     'sections.importLabel': 'Або імпортуйте файл .md/.txt:',
+    'sections.showMore': 'Показати більше',
+    'sections.showLess': 'Сховати',
 
     'enums.modeTechnical': 'Технічний',
     'enums.modeBehavioral': 'Поведінковий',
@@ -291,6 +301,7 @@ export const translations = {
     'summary.explanation': 'Пояснення: {text}',
     'summary.none': 'Ще немає опрацьованих запитань.',
     'summary.back': 'Назад до розділів',
+    'summary.trainAgain': 'Тренуватися знову з тими ж налаштуваннями',
     'summary.loading': 'Завантаження підсумку...',
 
     'progress.loading': 'Завантаження прогресу...',
@@ -311,6 +322,7 @@ export const translations = {
     'progress.trendUnknown': 'Ще недостатньо даних',
     'progress.chartCaption': 'Кожна точка — одна оцінена відповідь, від найдавнішої до найновішої.',
     'progress.chartAverageLabel': 'Ваше середнє ({score} / 10)',
+    'progress.trainTopic': 'Тренувати цю тему',
 
     'settings.loading': 'Завантаження налаштувань...',
     'settings.title': 'Налаштування AI',
@@ -334,6 +346,8 @@ export const translations = {
     'settings.sessionLengthIntro': 'Виберіть, скільки запитань включає кожна нова тренувальна сесія.',
     'settings.sessionLengthSaving': 'Збереження...',
     'settings.sessionLengthQuestions': '{n} запитань',
+    'settings.sessionLengthRange': '1 – 50 запитань на сесію',
+    'settings.sessionLengthSave': 'Зберегти',
 
     'questionBank.title': 'Банк запитань',
     'questionBank.intro':
@@ -360,6 +374,7 @@ export const translations = {
 
   ru: {
     'common.loading': 'Загрузка...',
+    'common.saved': 'Сохранено ✓',
 
     'nav.sections': 'Разделы',
     'nav.train': 'Тренировка',
@@ -400,6 +415,8 @@ export const translations = {
     'sections.addNotes': 'Добавить заметки',
     'sections.cancel': 'Отмена',
     'sections.importLabel': 'Или импортируйте файл .md/.txt:',
+    'sections.showMore': 'Показать больше',
+    'sections.showLess': 'Скрыть',
 
     'enums.modeTechnical': 'Технический',
     'enums.modeBehavioral': 'Поведенческий',
@@ -466,6 +483,7 @@ export const translations = {
     'summary.explanation': 'Объяснение: {text}',
     'summary.none': 'Пока нет отвеченных вопросов.',
     'summary.back': 'Назад к разделам',
+    'summary.trainAgain': 'Тренироваться снова с теми же настройками',
     'summary.loading': 'Загрузка итогов...',
 
     'progress.loading': 'Загрузка прогресса...',
@@ -486,6 +504,7 @@ export const translations = {
     'progress.trendUnknown': 'Пока недостаточно данных',
     'progress.chartCaption': 'Каждая точка — один оценённый ответ, от самого старого до самого нового.',
     'progress.chartAverageLabel': 'Ваше среднее ({score} / 10)',
+    'progress.trainTopic': 'Тренировать эту тему',
 
     'settings.loading': 'Загрузка настроек...',
     'settings.title': 'Настройки AI',
@@ -509,6 +528,8 @@ export const translations = {
     'settings.sessionLengthIntro': 'Выберите, сколько вопросов включает каждая новая тренировочная сессия.',
     'settings.sessionLengthSaving': 'Сохранение...',
     'settings.sessionLengthQuestions': '{n} вопросов',
+    'settings.sessionLengthRange': '1 – 50 вопросов на сессию',
+    'settings.sessionLengthSave': 'Сохранить',
 
     'questionBank.title': 'Банк вопросов',
     'questionBank.intro':

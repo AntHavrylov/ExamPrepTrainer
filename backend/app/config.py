@@ -14,7 +14,7 @@ class Settings(BaseSettings):
 
     api_key_encryption_key: str
 
-    max_document_content_length: int = 20000
+    max_document_content_length: int = 50000
     max_sections_per_user: int = 50
 
     max_questions_per_generate: int = 20

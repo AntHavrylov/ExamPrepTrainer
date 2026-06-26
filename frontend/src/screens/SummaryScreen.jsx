@@ -14,7 +14,7 @@ const FORMAT_KEYS = {
   quiz: 'enums.formatQuiz',
 }
 
-export default function SummaryScreen({ sessionId, onDone }) {
+export default function SummaryScreen({ sessionId, onDone, onTrainAgain }) {
   const { t } = useLanguage()
   const [summary, setSummary] = useState(null)
   const [error, setError] = useState(null)
@@ -87,7 +87,24 @@ export default function SummaryScreen({ sessionId, onDone }) {
         {answered.length === 0 && <li>{t('summary.none')}</li>}
       </ol>
 
-      <button onClick={onDone}>{t('summary.back')}</button>
+      <div className="summary-actions">
+        {onTrainAgain && (
+          <button
+            className="btn-secondary"
+            onClick={() =>
+              onTrainAgain({
+                selectedIds: summary.section_ids,
+                mode: summary.mode,
+                format: summary.format,
+                difficulty: summary.difficulty,
+              })
+            }
+          >
+            {t('summary.trainAgain')}
+          </button>
+        )}
+        <button onClick={onDone}>{t('summary.back')}</button>
+      </div>
     </div>
   )
 }
