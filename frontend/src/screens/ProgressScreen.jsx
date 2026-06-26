@@ -1,26 +1,19 @@
 import { useEffect, useState } from 'react'
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  ReferenceLine,
+} from 'recharts'
 import { api } from '../api'
 import { useLanguage } from '../context/LanguageContext'
 
 function average(numbers) {
   return numbers.reduce((sum, n) => sum + n, 0) / numbers.length
-}
-
-function Sparkline({ scores }) {
-  const width = 80
-  const height = 28
-  const stepX = scores.length > 1 ? width / (scores.length - 1) : 0
-  const coords = scores.map((score, i) => ({
-    x: scores.length > 1 ? i * stepX : width / 2,
-    y: height - (score / 10) * height,
-  }))
-  const path = coords.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x} ${c.y}`).join(' ')
-
-  return (
-    <svg className="sparkline" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
-      <path d={path} />
-    </svg>
-  )
 }
 
 function trendDirection(scores) {
@@ -32,6 +25,22 @@ function trendDirection(scores) {
   return 'flat'
 }
 
+function Sparkline({ scores }) {
+  const width = 80
+  const height = 28
+  const stepX = scores.length > 1 ? width / (scores.length - 1) : 0
+  const coords = scores.map((score, i) => ({
+    x: scores.length > 1 ? i * stepX : width / 2,
+    y: height - (score / 10) * height,
+  }))
+  const path = coords.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x} ${c.y}`).join(' ')
+  return (
+    <svg className="sparkline" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
+      <path d={path} />
+    </svg>
+  )
+}
+
 const TREND_KEYS = {
   up: 'progress.trendUp',
   down: 'progress.trendDown',
@@ -39,10 +48,31 @@ const TREND_KEYS = {
   unknown: 'progress.trendUnknown',
 }
 
+const SECTION_COLORS = [
+  '#60a5fa', '#34d399', '#f472b6', '#fbbf24',
+  '#a78bfa', '#fb923c', '#2dd4bf', '#e879f9',
+]
+const OVERALL_COLOR = '#818cf8'
+
+function CustomTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="chart-tooltip">
+      <p className="chart-tooltip-date">{label}</p>
+      {payload.map((entry) => (
+        <p key={entry.dataKey} style={{ color: entry.color }}>
+          {entry.name}: <strong>{Number(entry.value).toFixed(1)}</strong>
+        </p>
+      ))}
+    </div>
+  )
+}
+
 export default function ProgressScreen({ onTrainSection }) {
   const { t } = useLanguage()
   const [stats, setStats] = useState(null)
   const [error, setError] = useState(null)
+  const [hiddenLines, setHiddenLines] = useState(() => new Set())
 
   useEffect(() => {
     api
@@ -76,17 +106,28 @@ export default function ProgressScreen({ onTrainSection }) {
   const firstDate = new Date(history[0].created_at).toLocaleDateString()
   const lastDate = new Date(history[history.length - 1].created_at).toLocaleDateString()
 
-  const chartWidth = 320
-  const chartHeight = 120
-  const stepX = history.length > 1 ? chartWidth / (history.length - 1) : 0
-  const coords = history.map((point, i) => ({
-    x: history.length > 1 ? i * stepX : chartWidth / 2,
-    y: chartHeight - (point.score / 10) * chartHeight,
-    point,
-  }))
-  const linePath = coords.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x} ${c.y}`).join(' ')
-  const areaPath = `${linePath} L ${coords[coords.length - 1].x} ${chartHeight} L ${coords[0].x} ${chartHeight} Z`
-  const avgY = chartHeight - (stats.average_score / 10) * chartHeight
+  // section_names keys are strings from JSON; sort for stable color assignment
+  const sectionIds = Object.keys(stats.section_names).sort()
+
+  const chartData = history.map((point) => {
+    const entry = {
+      date: new Date(point.created_at).toLocaleDateString(),
+      overall: point.score,
+    }
+    sectionIds.forEach((id) => {
+      entry[`s${id}`] = point.section_scores[Number(id)] ?? null
+    })
+    return entry
+  })
+
+  function toggleLine(key) {
+    setHiddenLines((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
 
   return (
     <div className="progress-screen">
@@ -107,7 +148,7 @@ export default function ProgressScreen({ onTrainSection }) {
 
         <div className="stat-card">
           <span className="stat-card-label">{t('progress.statLatest')}</span>
-          <span className="stat-card-value">{latest} / 10</span>
+          <span className="stat-card-value">{latest.toFixed(1)} / 10</span>
           <span className={`stat-card-sub trend-${trend}`}>{t(TREND_KEYS[trend])}</span>
         </div>
 
@@ -122,65 +163,106 @@ export default function ProgressScreen({ onTrainSection }) {
 
       <h3>{t('progress.scoreHistory')}</h3>
       <p className="chart-caption">{t('progress.chartCaption')}</p>
-      <div className="score-chart-wrap">
-        <div className="score-chart-yaxis">
-          <span>10</span>
-          <span>5</span>
-          <span>0</span>
-        </div>
-        <svg
-          className="score-chart"
-          viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-          preserveAspectRatio="none"
-          role="img"
-          aria-label={t('progress.scoreHistory')}
-        >
-          <line className="score-chart-grid" x1="0" y1="0" x2={chartWidth} y2="0" />
-          <line className="score-chart-grid" x1="0" y1={chartHeight / 2} x2={chartWidth} y2={chartHeight / 2} />
-          <line className="score-chart-grid" x1="0" y1={chartHeight} x2={chartWidth} y2={chartHeight} />
-          <line className="score-chart-average" x1="0" y1={avgY} x2={chartWidth} y2={avgY} />
-          <path className="score-chart-area" d={areaPath} />
-          <path className="score-chart-line" d={linePath} />
-          {coords.map((c) => (
-            <circle key={c.point.attempt_id} className="score-chart-point" cx={c.x} cy={c.y} r="2.5">
-              <title>{`${new Date(c.point.created_at).toLocaleDateString()}: ${c.point.score} / 10`}</title>
-            </circle>
-          ))}
-        </svg>
-      </div>
-      <div className="score-chart-xaxis">
-        <span>{firstDate}</span>
-        <span>{lastDate}</span>
-      </div>
-      <p className="chart-legend">
-        <span className="chart-legend-swatch line" /> {t('progress.scoreHistory')}
-        <span className="chart-legend-swatch average" /> {t('progress.chartAverageLabel', { score: stats.average_score.toFixed(1) })}
-      </p>
 
-      <h3>{t('progress.weakestTopics')}</h3>
-      <ul className="topic-list">
-        {stats.weakest_topics.map((topic, i) => (
-          <li key={topic.section_id} className="topic-row">
-            <span className="topic-rank">{i + 1}</span>
-            <span className="topic-info">
-              <span className="topic-name">{topic.section_name}</span>
-              <span className="topic-meta">
-                {topic.attempt_count} {t(topic.attempt_count === 1 ? 'progress.answerSingular' : 'progress.answerPlural')}
-              </span>
-            </span>
-            <span className="topic-score">{topic.average_score.toFixed(1)} / 10</span>
-            {onTrainSection && (
-              <button
-                type="button"
-                className="btn-link topic-train-btn"
-                onClick={() => onTrainSection(topic.section_id)}
-              >
-                {t('progress.trainTopic')}
-              </button>
+      <div className="chart-toggles">
+        <button
+          type="button"
+          className={`chart-toggle${hiddenLines.has('overall') ? ' off' : ''}`}
+          style={{ '--toggle-color': OVERALL_COLOR }}
+          onClick={() => toggleLine('overall')}
+        >
+          {t('progress.overall')}
+        </button>
+        {sectionIds.map((id, idx) => {
+          const key = `s${id}`
+          return (
+            <button
+              key={id}
+              type="button"
+              className={`chart-toggle${hiddenLines.has(key) ? ' off' : ''}`}
+              style={{ '--toggle-color': SECTION_COLORS[idx % SECTION_COLORS.length] }}
+              onClick={() => toggleLine(key)}
+            >
+              {stats.section_names[id]}
+            </button>
+          )
+        })}
+      </div>
+
+      <div className="recharts-wrap">
+        <ResponsiveContainer width="100%" height={220}>
+          <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+            <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#94a3b8' }} />
+            <YAxis domain={[0, 10]} tick={{ fontSize: 11, fill: '#94a3b8' }} width={28} />
+            <Tooltip content={<CustomTooltip />} />
+            <ReferenceLine
+              y={stats.average_score}
+              stroke={OVERALL_COLOR}
+              strokeDasharray="4 2"
+              strokeOpacity={0.5}
+              label={{ value: stats.average_score.toFixed(1), fill: '#94a3b8', fontSize: 10 }}
+            />
+            {!hiddenLines.has('overall') && (
+              <Line
+                type="monotone"
+                dataKey="overall"
+                name={t('progress.overall')}
+                stroke={OVERALL_COLOR}
+                strokeWidth={2}
+                dot={{ r: 3, fill: OVERALL_COLOR }}
+                activeDot={{ r: 5 }}
+                connectNulls
+              />
             )}
-          </li>
-        ))}
-      </ul>
+            {sectionIds.map((id, idx) => {
+              const key = `s${id}`
+              if (hiddenLines.has(key)) return null
+              const color = SECTION_COLORS[idx % SECTION_COLORS.length]
+              return (
+                <Line
+                  key={key}
+                  type="monotone"
+                  dataKey={key}
+                  name={stats.section_names[id]}
+                  stroke={color}
+                  strokeWidth={1.5}
+                  dot={{ r: 2.5, fill: color }}
+                  activeDot={{ r: 4 }}
+                  connectNulls
+                />
+              )
+            })}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div className="progress-section">
+        <h3>{t('progress.weakestTopics')}</h3>
+        <ul className="topic-list">
+          {stats.weakest_topics.map((topic, i) => (
+            <li key={topic.section_id} className="topic-row">
+              <span className="topic-rank">{i + 1}</span>
+              <span className="topic-info">
+                <span className="topic-name">{topic.section_name}</span>
+                <span className="topic-meta">
+                  {topic.attempt_count} {t(topic.attempt_count === 1 ? 'progress.answerSingular' : 'progress.answerPlural')}
+                </span>
+              </span>
+              <span className="topic-score">{topic.average_score.toFixed(1)} / 10</span>
+              {onTrainSection && (
+                <button
+                  type="button"
+                  className="btn-link topic-train-btn"
+                  onClick={() => onTrainSection(topic.section_id)}
+                >
+                  {t('progress.trainTopic')}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   )
 }

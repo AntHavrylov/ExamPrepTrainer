@@ -277,10 +277,17 @@ export const api = {
     request(`/documents/${id}`, { method: 'PUT', body: { title, content } }),
   deleteDocument: (id) => request(`/documents/${id}`, { method: 'DELETE' }),
 
-  startSession: (sectionIds, mode, format, difficulty) =>
+  startSession: (sectionIds, mode, format, difficulty, count, sectionMode) =>
     request('/sessions', {
       method: 'POST',
-      body: { section_ids: sectionIds, mode, format, difficulty },
+      body: {
+        section_ids: sectionIds,
+        mode,
+        format,
+        difficulty,
+        section_mode: sectionMode ?? 'or',
+        ...(count != null && { count }),
+      },
     }),
   nextQuestion: (sessionId) => request(`/sessions/${sessionId}/next`, { method: 'POST' }),
   submitAnswer: (sessionId, payload) =>
@@ -313,5 +320,6 @@ export const api = {
       method: 'POST',
       body: { section_ids: sectionIds, mode, format, difficulty, count },
     }),
+  getGenerationJob: (jobId) => request(`/question-bank/jobs/${jobId}`),
   deleteQuestionBankItem: (id) => request(`/question-bank/${id}`, { method: 'DELETE' }),
 }

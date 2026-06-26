@@ -111,6 +111,8 @@ class StartSessionRequest(BaseModel):
     mode: Literal["technical", "behavioral", "mixed"] = "mixed"
     format: Literal["open_ended", "quiz"] = "open_ended"
     difficulty: Literal["easy", "medium", "hard"] = "medium"
+    section_mode: Literal["or", "and"] = "or"
+    count: int | None = Field(default=None, ge=1, le=50)
 
 
 class SessionRead(BaseModel):
@@ -122,6 +124,7 @@ class SessionRead(BaseModel):
     difficulty: str
     target_question_count: int
     section_ids: list[int]
+    section_mode: str
     started_at: datetime
     finished_at: datetime | None
 
@@ -175,9 +178,10 @@ class SessionSummaryRead(SessionRead):
 
 
 class ScorePoint(BaseModel):
-    attempt_id: int
+    session_id: int
     created_at: datetime
-    score: int
+    score: float
+    section_scores: dict[int, float] = {}  # section_id -> avg score for this session
 
 
 class TopicStat(BaseModel):
@@ -192,6 +196,18 @@ class StatsRead(BaseModel):
     average_score: float | None
     score_history: list[ScorePoint]
     weakest_topics: list[TopicStat]
+    section_names: dict[int, str] = {}  # section_id -> name for all sections with data
+
+
+class GenerationJobResponse(BaseModel):
+    job_id: str
+
+
+class GenerationJobStatus(BaseModel):
+    job_id: str
+    status: str  # pending | running | done | failed
+    count: int
+    error: str | None = None
 
 
 class ApiKeyStatusRead(BaseModel):

@@ -9,6 +9,8 @@ from app.models import QuestionBank
 
 
 class _StubAIClient:
+    api_key = "test-key"
+
     def __init__(self, response_text: str):
         self.response_text = response_text
 
@@ -42,7 +44,7 @@ def _generate_bank_item(client, headers, section_ids: list[int], question: str, 
             json={"section_ids": section_ids, "mode": "mixed", "format": "open_ended", "count": 1},
             headers=headers,
         )
-        assert response.status_code == 201
+        assert response.status_code == 202
     finally:
         _clear_ai_override()
 

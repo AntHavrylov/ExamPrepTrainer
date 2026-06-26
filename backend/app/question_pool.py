@@ -48,8 +48,9 @@ def matching_bank_rows(
     difficulty: str,
     language: str,
     scope: list[int],
+    section_mode: str = "or",
 ) -> list[QuestionBank]:
-    candidates = db.scalars(
+    candidates = list(db.scalars(
         select(QuestionBank).where(
             QuestionBank.user_id == user_id,
             QuestionBank.mode == mode,
@@ -57,8 +58,12 @@ def matching_bank_rows(
             QuestionBank.difficulty == difficulty,
             QuestionBank.language == language,
         )
-    )
-    return [row for row in candidates if scope_key(row.section_ids) == scope]
+    ))
+    if section_mode == "and":
+        return [row for row in candidates if scope_key(row.section_ids) == scope]
+    # "or": question belongs to at least one of the selected sections
+    scope_set = set(scope)
+    return [row for row in candidates if any(sid in scope_set for sid in row.section_ids)]
 
 
 def bank_rows_from_batch(

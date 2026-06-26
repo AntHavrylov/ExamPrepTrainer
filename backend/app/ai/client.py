@@ -73,7 +73,12 @@ class OpenRouterClient:
                     raise AIClientError(f"OpenRouter returned {response.status_code}")
 
                 if response.status_code >= 400:
-                    raise AIClientError(f"OpenRouter returned {response.status_code}: {response.text}")
+                    try:
+                        err_data = response.json()
+                        msg = err_data.get("error", {}).get("message") or response.text[:300]
+                    except Exception:
+                        msg = response.text[:300]
+                    raise AIClientError(f"OpenRouter error ({response.status_code}): {msg}")
 
                 data = response.json()
                 try:
@@ -104,10 +109,13 @@ class OpenRouterClient:
                 ) as response:
                     if response.status_code >= 400:
                         body = await response.aread()
-                        raise AIClientError(
-                            f"OpenRouter returned {response.status_code}: "
-                            f"{body.decode(errors='replace')}"
-                        )
+                        raw = body.decode(errors="replace")
+                        try:
+                            err_data = json.loads(raw)
+                            msg = err_data.get("error", {}).get("message") or raw[:300]
+                        except Exception:
+                            msg = raw[:300]
+                        raise AIClientError(f"OpenRouter error ({response.status_code}): {msg}")
 
                     async for line in response.aiter_lines():
                         line = line.strip()

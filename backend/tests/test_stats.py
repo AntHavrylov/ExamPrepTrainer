@@ -43,6 +43,7 @@ def test_stats_empty_for_new_user(client, make_user):
         "average_score": None,
         "score_history": [],
         "weakest_topics": [],
+        "section_names": {},
     }
 
 
@@ -75,7 +76,13 @@ def test_stats_aggregates_score_history_and_weakest_topics(client, make_user, db
 
     assert body["total_attempts"] == 3
     assert body["average_score"] == pytest.approx((8 + 6 + 2) / 3)
-    assert [point["score"] for point in body["score_history"]] == [8, 6, 2]
+    # score_history is per-session (one point per session, averaged across all
+    # questions in that session), so 2 sessions → 2 points.
+    history = body["score_history"]
+    assert len(history) == 2
+    assert history[0]["score"] == pytest.approx(7.0)  # Python session: (8+6)/2
+    assert history[1]["score"] == pytest.approx(2.0)  # System Design session
+    assert all("session_id" in p for p in history)
 
     topics = {topic["section_name"]: topic for topic in body["weakest_topics"]}
     assert topics["System Design"]["average_score"] == pytest.approx(2)
@@ -137,4 +144,5 @@ def test_stats_are_isolated_per_user(client, make_user, db_session):
         "average_score": None,
         "score_history": [],
         "weakest_topics": [],
+        "section_names": {},
     }

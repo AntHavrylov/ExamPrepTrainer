@@ -18,8 +18,6 @@ export default function SettingsScreen() {
   const [saving, setSaving] = useState(false)
   const [removing, setRemoving] = useState(false)
   const [savingLanguage, setSavingLanguage] = useState(false)
-  const [sessionLength, setSessionLength] = useState(user?.session_length ?? 5)
-  const [savingSessionLength, setSavingSessionLength] = useState(false)
 
   function showToast() {
     setToast(t('common.saved'))
@@ -100,24 +98,6 @@ export default function SettingsScreen() {
     }
   }
 
-  function handleSessionLengthChange(e) {
-    setSessionLength(Number(e.target.value))
-  }
-
-  async function handleSessionLengthSave(e) {
-    e.preventDefault()
-    setError(null)
-    setSavingSessionLength(true)
-    try {
-      await api.updateSessionLength(sessionLength)
-      showToast()
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setSavingSessionLength(false)
-    }
-  }
-
   if (loading) return <p>{t('settings.loading')}</p>
 
   return (
@@ -144,30 +124,6 @@ export default function SettingsScreen() {
             ))}
           </select>
         </label>
-      </section>
-
-      <h2>{t('settings.sessionLengthTitle')}</h2>
-      <p className="settings-intro">{t('settings.sessionLengthIntro')}</p>
-
-      <section className="settings-panel">
-        <form onSubmit={handleSessionLengthSave} className="settings-form">
-          <label>
-            {t('settings.sessionLengthTitle')}
-            <input
-              type="number"
-              min={1}
-              max={50}
-              value={sessionLength}
-              onChange={handleSessionLengthChange}
-              disabled={savingSessionLength}
-              className="session-length-input"
-            />
-          </label>
-          <p className="settings-sub">{t('settings.sessionLengthRange')}</p>
-          <button type="submit" disabled={savingSessionLength}>
-            {savingSessionLength ? t('settings.saving') : t('settings.sessionLengthSave')}
-          </button>
-        </form>
       </section>
 
       <h2>{t('settings.title')}</h2>

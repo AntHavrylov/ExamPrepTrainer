@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { useLanguage } from '../context/LanguageContext'
-import { OPEN_ENDED_EXPLANATION_THRESHOLD } from '../constants'
 
 const MODE_KEYS = {
   technical: 'enums.modeTechnical',
@@ -40,23 +39,24 @@ export default function SummaryScreen({ sessionId, onDone, onTrainAgain }) {
   return (
     <div className="summary-screen">
       <h2>{t('summary.title')}</h2>
-      <p>
-        {t('summary.modeFormat', {
-          mode: t(MODE_KEYS[summary.mode] || summary.mode),
-          format: t(FORMAT_KEYS[summary.format] || summary.format),
-        })}
-      </p>
-      <p>
-        {t('summary.average', {
-          score: summary.average_score !== null ? summary.average_score.toFixed(1) : '—',
-        })}
-      </p>
+      <div className="session-summary-card">
+        <p>
+          {t('summary.modeFormat', {
+            mode: t(MODE_KEYS[summary.mode] || summary.mode),
+            format: t(FORMAT_KEYS[summary.format] || summary.format),
+          })}
+        </p>
+        <p className="session-summary-score">
+          {t('summary.average', {
+            score: summary.average_score !== null ? summary.average_score.toFixed(1) : '—',
+          })}
+        </p>
+      </div>
 
       <ol className="summary-list">
         {answered.map((a) => {
           const wrongQuiz = isQuiz && a.selected_index !== a.correct_index
-          const lowOpenEnded = !isQuiz && a.score < OPEN_ENDED_EXPLANATION_THRESHOLD
-          const showExplanation = (wrongQuiz || lowOpenEnded) && a.explanation
+          const showExplanation = a.explanation
           return (
             <li key={a.id}>
               <p className="question">{a.question}</p>

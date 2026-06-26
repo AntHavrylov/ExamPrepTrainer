@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { useLanguage } from '../context/LanguageContext'
-import { OPEN_ENDED_EXPLANATION_THRESHOLD } from '../constants'
 
 export default function TrainingScreen({ sessionId, onFinish, onInterrupt }) {
   const { t } = useLanguage()
@@ -251,8 +250,7 @@ export default function TrainingScreen({ sessionId, onFinish, onInterrupt }) {
     )
   }
 
-  const showExplanation =
-    !isQuiz && result && result.score < OPEN_ENDED_EXPLANATION_THRESHOLD && result.explanation
+  const showExplanation = !isQuiz && result && result.explanation
   const atSessionLimit = question.question_number >= question.total_questions
 
   return (
@@ -265,8 +263,10 @@ export default function TrainingScreen({ sessionId, onFinish, onInterrupt }) {
           {t('training.interrupt')}
         </button>
       </div>
-      <p className="category">{question.category}</p>
-      <p className="question">{question.question}</p>
+      <div className="question-card">
+        <p className="category">{question.category}</p>
+        <p className="question">{question.question}</p>
+      </div>
 
       {error && (
         <p className="error" role="alert">
@@ -345,8 +345,10 @@ export default function TrainingScreen({ sessionId, onFinish, onInterrupt }) {
           {isQuiz && !result.is_correct && (
             <div className="correct-answer-box">
               <p>{t('training.correctAnswer', { answer: question.options[result.correct_index] })}</p>
-              {result.explanation && <p>{result.explanation}</p>}
             </div>
+          )}
+          {isQuiz && result.explanation && (
+            <p className="explanation">{t('training.explanation', { text: result.explanation })}</p>
           )}
           <p>{t('training.score', { score: result.score })}</p>
           {!isQuiz && <p className="submitted-answer">{t('training.yourAnswer', { answer: answerText })}</p>}

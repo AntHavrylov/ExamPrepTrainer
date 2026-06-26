@@ -114,7 +114,9 @@ def test_second_next_call_reuses_bank_without_ai_call(client, make_user, monkeyp
     assert first.json()["question"] != second.json()["question"]
 
 
-def test_pool_exhaustion_triggers_one_more_batched_generation(client, make_user, monkeypatch):
+def test_pool_exhaustion_recycles_then_generates_once(client, make_user, monkeypatch):
+    # batch_size=1 so each live-generation call produces exactly one question.
+    # background batch is disabled so we can count calls precisely.
     monkeypatch.setattr(settings, "question_bank_batch_size", 1)
     monkeypatch.setattr(settings, "background_question_batch_size", 0)
     headers = make_user("bank-exhaust@example.com")
@@ -131,7 +133,10 @@ def test_pool_exhaustion_triggers_one_more_batched_generation(client, make_user,
     finally:
         _clear_ai_override()
 
-    assert stub.calls == 3
+    # The pool starts empty → first /next generates one question (1 AI call).
+    # Subsequent /next calls recycle that question rather than re-generating,
+    # so AI is called exactly once regardless of how many questions are requested.
+    assert stub.calls == 1
 
 
 def test_cross_session_reuse_same_scope(client, make_user, monkeypatch):

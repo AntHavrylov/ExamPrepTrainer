@@ -30,6 +30,8 @@ QUIZ_QUESTION_JSON = json.dumps(
 
 
 class _StubAIClient:
+    api_key = "test-key"
+
     def __init__(self, response_text: str):
         self.response_text = response_text
         self.calls = 0
@@ -40,6 +42,8 @@ class _StubAIClient:
 
 
 class _StubStreamingAIClient:
+    api_key = "test-key"
+
     def __init__(self, chunks: list[str]):
         self.chunks = chunks
         self.stream_calls = 0
@@ -470,16 +474,17 @@ def test_start_session_blocked_when_live_generation_disabled_and_pool_empty(clie
     assert detail["language"] == "en"
 
 
-def test_next_question_blocked_when_pool_exhausted_mid_session(client, make_user, monkeypatch):
+def test_next_question_recycles_when_pool_exhausted_and_live_generation_off(client, make_user, monkeypatch):
     from app.config import settings as app_settings
 
     monkeypatch.setattr(app_settings, "live_question_generation_enabled", False)
     headers = make_user("sess-pool-exhausted@example.com")
     section_id = _create_section_with_document(client, headers)
 
-    # Seed a single question so the session can start, then exhaust it - the
-    # next /next finds the pool empty and (live generation off) must refuse to
-    # silently generate, pointing the user back to the Question Bank instead.
+    # Seed a single question, use it once, then request another - the pool is
+    # "exhausted" (all questions seen) but questions should be recycled rather
+    # than raising an error, so a second /next must return 200 with the same
+    # question recycled.
     _override_ai_client(_StubAIClient(OPEN_ENDED_QUESTION_JSON))
     try:
         generate_resp = client.post(
@@ -489,10 +494,35 @@ def test_next_question_blocked_when_pool_exhausted_mid_session(client, make_user
         )
     finally:
         _clear_ai_override()
-    assert generate_resp.status_code == 201
+    assert generate_resp.status_code == 202
 
     session_id = _start_session(client, headers, section_id, "open_ended")
-    assert client.post(f"/sessions/{session_id}/next", headers=headers).status_code == 200
+    first = client.post(f"/sessions/{session_id}/next", headers=headers)
+    assert first.status_code == 200
+
+    stub = _StubAIClient(OPEN_ENDED_QUESTION_JSON)
+    _override_ai_client(stub)
+    try:
+        second = client.post(f"/sessions/{session_id}/next", headers=headers)
+    finally:
+        _clear_ai_override()
+
+    assert second.status_code == 200
+    assert second.json()["question"] == first.json()["question"]
+    assert stub.calls == 0  # recycled, no AI call
+
+
+def test_next_question_blocked_when_bank_is_truly_empty(client, make_user, monkeypatch):
+    from app.config import settings as app_settings
+
+    headers = make_user("sess-bank-empty@example.com")
+    section_id = _create_section_with_document(client, headers)
+
+    # Start the session while live generation is on (default in tests) so the
+    # empty bank doesn't block session creation, then disable it — the first
+    # /next must 503 because there are zero questions and recycling is impossible.
+    session_id = _start_session(client, headers, section_id, "open_ended")
+    monkeypatch.setattr(app_settings, "live_question_generation_enabled", False)
 
     stub = _StubAIClient(OPEN_ENDED_QUESTION_JSON)
     _override_ai_client(stub)
@@ -522,7 +552,7 @@ def test_next_question_uses_pregenerated_bank_row_when_live_generation_disabled(
         )
     finally:
         _clear_ai_override()
-    assert generate_resp.status_code == 201
+    assert generate_resp.status_code == 202
 
     session_id = _start_session(client, headers, section_id, "open_ended")
 
@@ -613,3 +643,64 @@ def test_answer_stream_rejected_after_finish(client, make_user):
         f"/sessions/{session_id}/answer/stream", json={"answer": "test"}, headers=headers
     )
     assert response.status_code == 409
+
+
+def test_or_section_mode_finds_questions_generated_for_individual_sections(client, make_user, monkeypatch):
+    """OR mode must accept pre-generated questions from any overlapping section.
+
+    A common user flow: generate questions for section A and section B separately
+    in the Question Bank, then train with both sections selected.  With AND mode
+    (exact scope match) that fails because neither pool has scope=[A,B].  With
+    OR mode it must succeed because at least one section overlaps.
+    """
+    from app.config import settings as app_settings
+
+    monkeypatch.setattr(app_settings, "live_question_generation_enabled", False)
+    headers = make_user("sess-or-mode@example.com")
+
+    section_a = client.post("/sections", json={"name": "Python"}, headers=headers).json()
+    section_b = client.post("/sections", json={"name": "Databases"}, headers=headers).json()
+    for sec_id in (section_a["id"], section_b["id"]):
+        client.post(
+            f"/sections/{sec_id}/documents",
+            json={"title": "Notes", "content": "Interview prep notes."},
+            headers=headers,
+        )
+
+    # Generate one quiz question scoped to section A only.
+    _override_ai_client(_StubAIClient(QUIZ_QUESTION_JSON))
+    try:
+        gen = client.post(
+            "/question-bank/generate",
+            json={"section_ids": [section_a["id"]], "mode": "technical", "format": "quiz", "count": 1},
+            headers=headers,
+        )
+    finally:
+        _clear_ai_override()
+    assert gen.status_code == 202
+
+    # AND mode with [A, B] → 409: no questions with scope exactly [A, B].
+    resp_and = client.post(
+        "/sessions",
+        json={
+            "section_ids": [section_a["id"], section_b["id"]],
+            "mode": "technical",
+            "format": "quiz",
+            "section_mode": "and",
+        },
+        headers=headers,
+    )
+    assert resp_and.status_code == 409, "AND mode must reject when no exact-scope questions exist"
+
+    # OR mode with [A, B] → 201: the question scoped to A overlaps with {A, B}.
+    resp_or = client.post(
+        "/sessions",
+        json={
+            "section_ids": [section_a["id"], section_b["id"]],
+            "mode": "technical",
+            "format": "quiz",
+            "section_mode": "or",
+        },
+        headers=headers,
+    )
+    assert resp_or.status_code == 201, "OR mode must accept when at least one section has questions"

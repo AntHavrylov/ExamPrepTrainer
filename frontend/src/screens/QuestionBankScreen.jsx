@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { api } from '../api'
 import { useLanguage } from '../context/LanguageContext'
 import { LANGUAGE_NATIVE_NAMES, SUPPORTED_LANGUAGES } from '../i18n/translations'
+
+const MAX_QUEUE = 2
 
 const MODE_KEYS = {
   technical: 'enums.modeTechnical',
@@ -40,12 +42,16 @@ export default function QuestionBankScreen() {
   const [genFormat, setGenFormat] = useState('quiz')
   const [genDifficulty, setGenDifficulty] = useState('medium')
   const [genCount, setGenCount] = useState(5)
-  const [generating, setGenerating] = useState(false)
+  const [activeJobs, setActiveJobs] = useState([])
   const [genError, setGenError] = useState(null)
+  const [genSuccess, setGenSuccess] = useState(null)
 
   const [deletingId, setDeletingId] = useState(null)
+  const [deletingBulk, setDeletingBulk] = useState(false)
   const [reloadToken, setReloadToken] = useState(0)
   const [expandedIds, setExpandedIds] = useState(() => new Set())
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const initialLoadDone = useRef(false)
 
   useEffect(() => {
     api
@@ -58,7 +64,7 @@ export default function QuestionBankScreen() {
     let cancelled = false
 
     async function load() {
-      setLoading(true)
+      if (!initialLoadDone.current) setLoading(true)
       setError(null)
       try {
         const data = await api.listQuestionBank({
@@ -69,7 +75,11 @@ export default function QuestionBankScreen() {
           language: filterLanguage || undefined,
           unused_only: unusedOnly ? 'true' : undefined,
         })
-        if (!cancelled) setItems(data)
+        if (!cancelled) {
+          setItems(data)
+          setSelectedIds(new Set())
+          initialLoadDone.current = true
+        }
       } catch (err) {
         if (!cancelled) setError(err.message)
       } finally {
@@ -78,15 +88,77 @@ export default function QuestionBankScreen() {
     }
 
     load()
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [filterSectionId, filterMode, filterFormat, filterDifficulty, filterLanguage, unusedOnly, reloadToken])
+
+  // Poll active generation jobs every 2 seconds; auto-reload list when done.
+  useEffect(() => {
+    if (activeJobs.length === 0) return
+    const id = setTimeout(async () => {
+      const results = await Promise.allSettled(activeJobs.map((j) => api.getGenerationJob(j.job_id)))
+      const still = []
+      let needsReload = false
+      const errors = []
+      let totalDone = 0
+
+      results.forEach((res, i) => {
+        if (res.status === 'rejected') { still.push(activeJobs[i]); return }
+        const updated = res.value
+        if (updated.status === 'done') {
+          needsReload = true
+          totalDone += updated.count
+        } else if (updated.status === 'failed') {
+          errors.push(updated.error || t('questionBank.jobFailed'))
+        } else {
+          still.push(updated)
+        }
+      })
+
+      if (needsReload) {
+        setReloadToken((n) => n + 1)
+        setGenSuccess(t('questionBank.jobDone', { count: totalDone }))
+        setTimeout(() => setGenSuccess(null), 4000)
+      }
+      if (errors.length > 0) setGenError(errors.join('; '))
+      setActiveJobs(still)
+    }, 2000)
+    return () => clearTimeout(id)
+  }, [activeJobs])
 
   const visibleItems = items.filter((item) =>
     item.question.toLowerCase().includes(searchText.trim().toLowerCase()),
   )
 
+  // --- selection helpers ---
+  const visibleSelectedCount = visibleItems.filter((i) => selectedIds.has(i.id)).length
+  const allVisibleSelected = visibleItems.length > 0 && visibleSelectedCount === visibleItems.length
+
+  function toggleSelected(id) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAllVisible() {
+    if (allVisibleSelected) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        visibleItems.forEach((i) => next.delete(i.id))
+        return next
+      })
+    } else {
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        visibleItems.forEach((i) => next.add(i.id))
+        return next
+      })
+    }
+  }
+
+  // --- generation ---
   function toggleGenSection(id) {
     setGenSectionIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
@@ -113,17 +185,16 @@ export default function QuestionBankScreen() {
       return
     }
     setGenError(null)
-    setGenerating(true)
+    setGenSuccess(null)
     try {
-      await api.generateQuestionBankItems(genSectionIds, genMode, genFormat, genDifficulty, genCount)
-      setReloadToken((n) => n + 1)
+      const { job_id } = await api.generateQuestionBankItems(genSectionIds, genMode, genFormat, genDifficulty, genCount)
+      setActiveJobs((prev) => [...prev, { job_id, status: 'pending', count: 0, error: null }])
     } catch (err) {
       setGenError(err.message)
-    } finally {
-      setGenerating(false)
     }
   }
 
+  // --- delete ---
   async function handleDelete(id) {
     if (!window.confirm(t('questionBank.deleteConfirm'))) return
     setError(null)
@@ -131,10 +202,28 @@ export default function QuestionBankScreen() {
     try {
       await api.deleteQuestionBankItem(id)
       setItems((prev) => prev.filter((item) => item.id !== id))
+      setSelectedIds((prev) => { const next = new Set(prev); next.delete(id); return next })
     } catch (err) {
       setError(err.message)
     } finally {
       setDeletingId(null)
+    }
+  }
+
+  async function handleDeleteSelected() {
+    if (!window.confirm(t('questionBank.deleteSelectedConfirm', { count: selectedIds.size }))) return
+    setError(null)
+    setDeletingBulk(true)
+    const ids = [...selectedIds]
+    try {
+      await Promise.all(ids.map((id) => api.deleteQuestionBankItem(id)))
+      setItems((prev) => prev.filter((item) => !ids.includes(item.id)))
+      setSelectedIds(new Set())
+    } catch (err) {
+      setError(err.message)
+      setReloadToken((n) => n + 1)
+    } finally {
+      setDeletingBulk(false)
     }
   }
 
@@ -225,10 +314,24 @@ export default function QuestionBankScreen() {
               {genError}
             </p>
           )}
+          {genSuccess && (
+            <p className="success-msg" role="status">
+              {genSuccess}
+            </p>
+          )}
 
-          <button type="submit" disabled={generating}>
-            {generating ? t('questionBank.generating') : t('questionBank.generateBtn')}
+          <button type="submit" disabled={activeJobs.length >= MAX_QUEUE}>
+            {activeJobs.length >= MAX_QUEUE
+              ? t('questionBank.queueFull', { max: MAX_QUEUE })
+              : t('questionBank.generateBtn')}
           </button>
+
+          {activeJobs.map((job) => (
+            <div key={job.job_id} className="loading-block">
+              <span className="spinner" aria-hidden="true" />
+              <span>{t('questionBank.jobPending')}</span>
+            </div>
+          ))}
         </form>
       </section>
 
@@ -303,11 +406,35 @@ export default function QuestionBankScreen() {
         </label>
       </div>
 
-      {!loading && (
-        <p className="question-bank-count">
-          {t('questionBank.questionCount', { shown: visibleItems.length, total: items.length })}
-        </p>
-      )}
+      <div className="question-bank-list-header">
+          <label className="question-bank-select-all">
+            <input
+              type="checkbox"
+              checked={allVisibleSelected}
+              ref={(el) => {
+                if (el) el.indeterminate = visibleSelectedCount > 0 && !allVisibleSelected
+              }}
+              onChange={toggleSelectAllVisible}
+              disabled={visibleItems.length === 0}
+            />
+            <span className="question-bank-count">
+              {t('questionBank.questionCount', { shown: visibleItems.length, total: items.length })}
+            </span>
+          </label>
+
+          {selectedIds.size > 0 && (
+            <button
+              type="button"
+              className="btn-danger"
+              onClick={handleDeleteSelected}
+              disabled={deletingBulk}
+            >
+              {deletingBulk
+                ? t('questionBank.deleting')
+                : t('questionBank.deleteSelected', { count: selectedIds.size })}
+            </button>
+          )}
+      </div>
 
       {loading ? (
         <p>{t('common.loading')}</p>
@@ -315,30 +442,45 @@ export default function QuestionBankScreen() {
         <ul className="question-bank-list">
           {visibleItems.map((item) => {
             const expanded = expandedIds.has(item.id)
+            const selected = selectedIds.has(item.id)
             return (
-              <li key={item.id} className="question-bank-item">
-                <button
-                  type="button"
-                  className="question-bank-item-summary"
-                  onClick={() => toggleExpanded(item.id)}
-                  aria-expanded={expanded}
-                >
-                  <span className={`status-badge ${item.used_at ? 'used' : 'ready'}`}>
-                    {item.used_at ? t('questionBank.statusUsed') : t('questionBank.statusReady')}
-                  </span>
-                  <span className="question-bank-item-question">{item.question}</span>
-                  <span className="question-bank-item-meta">
-                    {t(MODE_KEYS[item.mode] || item.mode)} · {t(FORMAT_KEYS[item.format] || item.format)} ·{' '}
-                    {t(DIFFICULTY_KEYS[item.difficulty] || item.difficulty)}
-                  </span>
-                  <span className="question-bank-chevron" aria-hidden="true">
-                    {expanded ? '▾' : '▸'}
-                  </span>
-                </button>
+              <li key={item.id} className={`question-bank-item${selected ? ' selected' : ''}`}>
+                <div className="question-bank-item-row">
+                  <label className="question-bank-item-checkbox" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() => toggleSelected(item.id)}
+                    />
+                  </label>
+
+                  <button
+                    type="button"
+                    className="question-bank-item-summary"
+                    onClick={() => toggleExpanded(item.id)}
+                    aria-expanded={expanded}
+                  >
+                    <span className={`status-badge ${item.used_at ? 'used' : 'ready'}`}>
+                      {item.used_at ? t('questionBank.statusUsed') : t('questionBank.statusReady')}
+                    </span>
+                    <span className="question-bank-item-body">
+                      <span className="question-bank-item-section">{sectionNamesFor(item)}</span>
+                      <span className={`question-bank-item-question${expanded ? ' expanded' : ''}`}>
+                        {item.question}
+                      </span>
+                      <span className="question-bank-item-meta">
+                        {t(MODE_KEYS[item.mode] || item.mode)} · {t(FORMAT_KEYS[item.format] || item.format)} ·{' '}
+                        {t(DIFFICULTY_KEYS[item.difficulty] || item.difficulty)}
+                      </span>
+                    </span>
+                    <span className="question-bank-chevron" aria-hidden="true">
+                      {expanded ? '▾' : '▸'}
+                    </span>
+                  </button>
+                </div>
 
                 {expanded && (
                   <div className="question-bank-item-details">
-                    <p className="question-bank-item-meta">{sectionNamesFor(item)}</p>
                     {item.options && (
                       <ul className="question-bank-options">
                         {item.options.map((opt, idx) => (

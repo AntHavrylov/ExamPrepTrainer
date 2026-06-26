@@ -1,4 +1,5 @@
 import json
+from collections import defaultdict
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -142,17 +143,18 @@ def start_session(
     # first question with a confusing mid-session error.
     scope = scope_key(payload.section_ids)
     matching = matching_bank_rows(
-        db, current_user.id, payload.mode, payload.format, payload.difficulty, current_user.language, scope
+        db, current_user.id, payload.mode, payload.format, payload.difficulty,
+        current_user.language, scope, section_mode=payload.section_mode,
     )
     unused = sum(1 for row in matching if row.used_at is None)
 
-    if unused == 0 and not settings.live_question_generation_enabled:
+    if len(matching) == 0 and not settings.live_question_generation_enabled:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
                 "code": "no_questions",
                 "message": (
-                    "No unused questions available for this combination. "
+                    "No questions available for this combination. "
                     "Generate some from the Question Bank tab first."
                 ),
                 "mode": payload.mode,
@@ -167,8 +169,9 @@ def start_session(
         mode=payload.mode,
         format=payload.format,
         difficulty=payload.difficulty,
-        target_question_count=current_user.session_length,
+        target_question_count=payload.count or current_user.session_length,
         section_ids=payload.section_ids,
+        section_mode=payload.section_mode,
     )
     db.add(session)
     db.commit()
@@ -235,16 +238,20 @@ async def next_question(
     scope = scope_key(session.section_ids)
 
     matching = matching_bank_rows(
-        db, current_user.id, session.mode, session.format, session.difficulty, current_user.language, scope
+        db, current_user.id, session.mode, session.format, session.difficulty,
+        current_user.language, scope, section_mode=session.section_mode,
     )
     candidate = next((row for row in matching if row.used_at is None), None)
+    if candidate is None and matching:
+        # All questions have been seen — recycle, starting with the oldest.
+        candidate = min(matching, key=lambda r: r.used_at)
 
     if candidate is None:
         if not settings.live_question_generation_enabled:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=(
-                    "No unused questions available for this combination. "
+                    "No questions available for this combination. "
                     "Generate some from the Question Bank tab first."
                 ),
             )
@@ -533,24 +540,53 @@ def get_stats(
     if not attempts:
         return StatsRead(total_attempts=0, average_score=None, score_history=[], weakest_topics=[])
 
-    score_history = [
-        ScorePoint(attempt_id=a.id, created_at=a.created_at, score=a.score) for a in attempts
-    ]
+    # Group scored attempts by session; each chart point = one session average.
+    session_groups: dict[int, list[Attempt]] = defaultdict(list)
+    for attempt in attempts:
+        session_groups[attempt.session_id].append(attempt)
+
+    # Collect every section referenced by sessions that have scored attempts.
+    all_section_ids: set[int] = set()
+    for sid in session_groups:
+        if sid in session_by_id:
+            all_section_ids.update(session_by_id[sid].section_ids)
+
+    section_names: dict[int, str] = {
+        section.id: section.name
+        for section in db.scalars(select(Section).where(Section.id.in_(all_section_ids)))
+    }
+
+    # Build per-session score history.  Because attempts are not individually
+    # tagged with a section, we spread the session's overall average equally
+    # across all sections that session covered.
+    score_history = sorted(
+        [
+            ScorePoint(
+                session_id=sid,
+                created_at=session_by_id[sid].started_at,
+                score=round(sum(a.score for a in grp) / len(grp), 1),
+                section_scores={
+                    sec_id: round(sum(a.score for a in grp) / len(grp), 1)
+                    for sec_id in session_by_id[sid].section_ids
+                    if sec_id in section_names
+                },
+            )
+            for sid, grp in session_groups.items()
+            if sid in session_by_id
+        ],
+        key=lambda p: (p.created_at, p.session_id),
+    )
+
     average_score = sum(a.score for a in attempts) / len(attempts)
 
     topic_scores: dict[int, list[int]] = {}
     for attempt in attempts:
         for section_id in session_by_id[attempt.session_id].section_ids:
-            topic_scores.setdefault(section_id, []).append(attempt.score)
-
-    section_ids = list(topic_scores.keys())
-    section_names = {
-        section.id: section.name
-        for section in db.scalars(select(Section).where(Section.id.in_(section_ids)))
-    }
+            if section_id in section_names:
+                topic_scores.setdefault(section_id, []).append(attempt.score)
 
     weakest_topics = sorted(
-        (
+        [
             TopicStat(
                 section_id=section_id,
                 section_name=section_names[section_id],
@@ -558,8 +594,7 @@ def get_stats(
                 attempt_count=len(scores),
             )
             for section_id, scores in topic_scores.items()
-            if section_id in section_names
-        ),
+        ],
         key=lambda topic: topic.average_score,
     )[:5]
 
@@ -568,6 +603,7 @@ def get_stats(
         average_score=average_score,
         score_history=score_history,
         weakest_topics=weakest_topics,
+        section_names=section_names,
     )
 
 
@@ -591,6 +627,7 @@ def get_session(
         difficulty=session.difficulty,
         target_question_count=session.target_question_count,
         section_ids=session.section_ids,
+        section_mode=session.section_mode,
         started_at=session.started_at,
         finished_at=session.finished_at,
         attempts=[_attempt_to_summary(a) for a in attempts],

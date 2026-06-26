@@ -80,6 +80,7 @@ class Session(Base):
     difficulty: Mapped[str] = mapped_column(String(20), nullable=False, default="medium")
     target_question_count: Mapped[int] = mapped_column(default=5)
     section_ids: Mapped[list[int]] = mapped_column(JSON, nullable=False)
+    section_mode: Mapped[str] = mapped_column(String(10), nullable=False, default="or")
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

@@ -16,6 +16,8 @@ class AIProvider(Protocol):
     changing call sites.
     """
 
+    api_key: str  # empty string when no key is configured
+
     async def list_models(self) -> list[ModelInfo]: ...
 
     async def validate_key(self) -> bool: ...

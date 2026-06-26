@@ -9,6 +9,8 @@ from app.models import QuestionBank
 
 
 class _StubAIClient:
+    api_key = "test-key"
+
     def __init__(self, response_text: str):
         self.response_text = response_text
         self.calls = 0
@@ -19,6 +21,8 @@ class _StubAIClient:
 
 
 class _FlakyJSONAIClient:
+    api_key = "test-key"
+
     def __init__(self, bad_response: str, good_response: str):
         self.bad_response = bad_response
         self.good_response = good_response
@@ -101,14 +105,16 @@ def test_generate_creates_rows_and_returns_them(client, make_user):
     finally:
         _clear_ai_override()
 
-    assert response.status_code == 201
-    body = response.json()
-    assert len(body) == 2
-    assert body[0]["question"] == "What is the GIL?"
-    assert body[0]["used_at"] is None
+    # Generate returns 202 immediately; the background task ran synchronously
+    # in the test client, so questions are already in the DB.
+    assert response.status_code == 202
+    assert "job_id" in response.json()
 
     listed = client.get("/question-bank", headers=headers).json()
     assert len(listed) == 2
+    questions = {item["question"] for item in listed}
+    assert "What is the GIL?" in questions
+    assert all(item["used_at"] is None for item in listed)
 
 
 def test_generate_rejects_another_users_section(client, make_user):
@@ -168,7 +174,12 @@ def test_generate_fails_gracefully_when_ai_never_returns_valid_json(client, make
     finally:
         _clear_ai_override()
 
-    assert response.status_code == 503
+    # Accepted immediately; AI failure surfaces via the job status.
+    assert response.status_code == 202
+    job_id = response.json()["job_id"]
+    job = client.get(f"/question-bank/jobs/{job_id}", headers=headers).json()
+    assert job["status"] == "failed"
+    assert job["error"] is not None
 
 
 def test_generate_quiz_format_stores_options_and_correct_index(client, make_user):
@@ -186,8 +197,10 @@ def test_generate_quiz_format_stores_options_and_correct_index(client, make_user
     finally:
         _clear_ai_override()
 
-    assert response.status_code == 201
-    body = response.json()[0]
+    assert response.status_code == 202
+    listed = client.get("/question-bank", headers=headers).json()
+    assert len(listed) == 1
+    body = listed[0]
     assert body["options"] == item["options"]
     assert body["correct_index"] == 1
 
@@ -315,15 +328,16 @@ def test_delete_removes_the_item(client, make_user):
     item = _open_ended_item("What is the GIL?", "python gil")
     _override_ai_client(_StubAIClient(json.dumps([item])))
     try:
-        generated = client.post(
+        client.post(
             "/question-bank/generate",
             json={"section_ids": [section_id], "mode": "mixed", "format": "open_ended", "count": 1},
             headers=headers,
-        ).json()
+        )
     finally:
         _clear_ai_override()
 
-    item_id = generated[0]["id"]
+    listed = client.get("/question-bank", headers=headers).json()
+    item_id = listed[0]["id"]
     delete_response = client.delete(f"/question-bank/{item_id}", headers=headers)
     assert delete_response.status_code == 204
 
@@ -339,15 +353,16 @@ def test_delete_rejects_another_users_item(client, make_user):
     item = _open_ended_item("What is the GIL?", "python gil")
     _override_ai_client(_StubAIClient(json.dumps([item])))
     try:
-        generated = client.post(
+        client.post(
             "/question-bank/generate",
             json={"section_ids": [section_id], "mode": "mixed", "format": "open_ended", "count": 1},
             headers=headers_a,
-        ).json()
+        )
     finally:
         _clear_ai_override()
 
-    item_id = generated[0]["id"]
+    listed = client.get("/question-bank", headers=headers_a).json()
+    item_id = listed[0]["id"]
     response = client.delete(f"/question-bank/{item_id}", headers=headers_b)
     assert response.status_code == 404
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
+import { useAuth } from '../context/AuthContext'
 import { useLanguage } from '../context/LanguageContext'
 import { LANGUAGE_NATIVE_NAMES } from '../i18n/translations'
 import { LAST_TRAINING_SETTINGS_KEY, PRE_SELECT_SECTIONS_KEY } from '../constants'
@@ -32,16 +33,16 @@ function loadSavedSettings() {
 
 export default function StartTrainingScreen({ onStarted, onNavigate }) {
   const { t } = useLanguage()
+  const { user } = useAuth()
   const [sections, setSections] = useState([])
   const saved = loadSavedSettings()
   const [selectedIds, setSelectedIds] = useState(saved?.selectedIds ?? [])
   const [mode, setMode] = useState(saved?.mode ?? 'technical')
   const [format, setFormat] = useState(saved?.format ?? 'quiz')
   const [difficulty, setDifficulty] = useState(saved?.difficulty ?? 'medium')
+  const [sectionMode, setSectionMode] = useState(saved?.sectionMode ?? 'or')
+  const [count, setCount] = useState(saved?.count ?? user?.session_length ?? 5)
   const [error, setError] = useState(null)
-  // Set when the backend rejects the start because no unused questions match
-  // the chosen combination (incl. the active language) - carries the exact
-  // failing parameters so we can show them and point the user at generation.
   const [noQuestions, setNoQuestions] = useState(null)
   const [starting, setStarting] = useState(false)
 
@@ -64,12 +65,14 @@ export default function StartTrainingScreen({ onStarted, onNavigate }) {
 
   function toggleSection(id) {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+    setNoQuestions(null)
   }
 
   function toggleSelectAll() {
     setSelectedIds((prev) =>
       prev.length === sections.length ? [] : sections.map((s) => s.id),
     )
+    setNoQuestions(null)
   }
 
   async function handleStart(e) {
@@ -81,9 +84,12 @@ export default function StartTrainingScreen({ onStarted, onNavigate }) {
     setError(null)
     setNoQuestions(null)
     setStarting(true)
-    localStorage.setItem(LAST_TRAINING_SETTINGS_KEY, JSON.stringify({ selectedIds, mode, format, difficulty }))
+    localStorage.setItem(
+      LAST_TRAINING_SETTINGS_KEY,
+      JSON.stringify({ selectedIds, mode, format, difficulty, sectionMode, count }),
+    )
     try {
-      const session = await api.startSession(selectedIds, mode, format, difficulty)
+      const session = await api.startSession(selectedIds, mode, format, difficulty, count, sectionMode)
       onStarted(session.id)
     } catch (err) {
       if (err.status === 409 && err.detail?.code === 'no_questions') {
@@ -157,6 +163,27 @@ export default function StartTrainingScreen({ onStarted, onNavigate }) {
             })}
             {sections.length === 0 && <p>{t('startTraining.noSections')}</p>}
           </div>
+          {selectedIds.length > 1 && (
+            <div className="section-mode-row">
+              <span className="field-label">{t('startTraining.sectionMode')}</span>
+              <div className="segment-control">
+                <button
+                  type="button"
+                  className={sectionMode === 'or' ? 'active' : ''}
+                  onClick={() => { setSectionMode('or'); setNoQuestions(null) }}
+                >
+                  {t('startTraining.sectionModeOr')}
+                </button>
+                <button
+                  type="button"
+                  className={sectionMode === 'and' ? 'active' : ''}
+                  onClick={() => { setSectionMode('and'); setNoQuestions(null) }}
+                >
+                  {t('startTraining.sectionModeAnd')}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <label>
@@ -183,6 +210,18 @@ export default function StartTrainingScreen({ onStarted, onNavigate }) {
             <option value="medium">{t('enums.difficultyMedium')}</option>
             <option value="hard">{t('enums.difficultyHard')}</option>
           </select>
+        </label>
+
+        <label>
+          {t('startTraining.questionCount')}
+          <input
+            type="number"
+            min={1}
+            max={50}
+            value={count}
+            onChange={(e) => setCount(Number(e.target.value))}
+            className="session-length-input"
+          />
         </label>
 
         <button type="submit" disabled={starting}>
