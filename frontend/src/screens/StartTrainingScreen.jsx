@@ -1,8 +1,26 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { useLanguage } from '../context/LanguageContext'
+import { LANGUAGE_NATIVE_NAMES } from '../i18n/translations'
 
-export default function StartTrainingScreen({ onStarted }) {
+const MODE_KEYS = {
+  technical: 'enums.modeTechnical',
+  behavioral: 'enums.modeBehavioral',
+  mixed: 'enums.modeMixed',
+}
+
+const FORMAT_KEYS = {
+  open_ended: 'enums.formatOpenEnded',
+  quiz: 'enums.formatQuiz',
+}
+
+const DIFFICULTY_KEYS = {
+  easy: 'enums.difficultyEasy',
+  medium: 'enums.difficultyMedium',
+  hard: 'enums.difficultyHard',
+}
+
+export default function StartTrainingScreen({ onStarted, onNavigate }) {
   const { t } = useLanguage()
   const [sections, setSections] = useState([])
   const [selectedIds, setSelectedIds] = useState([])
@@ -10,6 +28,10 @@ export default function StartTrainingScreen({ onStarted }) {
   const [format, setFormat] = useState('quiz')
   const [difficulty, setDifficulty] = useState('medium')
   const [error, setError] = useState(null)
+  // Set when the backend rejects the start because no unused questions match
+  // the chosen combination (incl. the active language) - carries the exact
+  // failing parameters so we can show them and point the user at generation.
+  const [noQuestions, setNoQuestions] = useState(null)
   const [starting, setStarting] = useState(false)
 
   useEffect(() => {
@@ -30,12 +52,17 @@ export default function StartTrainingScreen({ onStarted }) {
       return
     }
     setError(null)
+    setNoQuestions(null)
     setStarting(true)
     try {
       const session = await api.startSession(selectedIds, mode, format, difficulty)
       onStarted(session.id)
     } catch (err) {
-      setError(err.message)
+      if (err.status === 409 && err.detail?.code === 'no_questions') {
+        setNoQuestions(err.detail)
+      } else {
+        setError(err.message)
+      }
     } finally {
       setStarting(false)
     }
@@ -48,6 +75,34 @@ export default function StartTrainingScreen({ onStarted }) {
         <p className="error" role="alert">
           {error}
         </p>
+      )}
+
+      {noQuestions && (
+        <div className="no-questions-notice" role="alert">
+          <h3>{t('startTraining.noQuestionsTitle')}</h3>
+          <p>{t('startTraining.noQuestionsBody')}</p>
+          <dl className="no-questions-params">
+            <div>
+              <dt>{t('startTraining.mode')}</dt>
+              <dd>{t(MODE_KEYS[noQuestions.mode] || noQuestions.mode)}</dd>
+            </div>
+            <div>
+              <dt>{t('startTraining.format')}</dt>
+              <dd>{t(FORMAT_KEYS[noQuestions.format] || noQuestions.format)}</dd>
+            </div>
+            <div>
+              <dt>{t('startTraining.difficulty')}</dt>
+              <dd>{t(DIFFICULTY_KEYS[noQuestions.difficulty] || noQuestions.difficulty)}</dd>
+            </div>
+            <div>
+              <dt>{t('startTraining.language')}</dt>
+              <dd>{LANGUAGE_NATIVE_NAMES[noQuestions.language] || noQuestions.language}</dd>
+            </div>
+          </dl>
+          <button type="button" onClick={() => onNavigate?.('question-bank')}>
+            {t('startTraining.goToQuestionBank')}
+          </button>
+        </div>
       )}
 
       <form onSubmit={handleStart}>

@@ -38,8 +38,15 @@ export function clearTokens() {
 
 export class ApiError extends Error {
   constructor(status, detail) {
-    super(detail || `Request failed with status ${status}`)
+    // `detail` may be a plain string (most errors) or a structured object
+    // (e.g. the "no questions for this combination" guard, which carries the
+    // failing parameters). Keep the human-readable string in `message` either
+    // way, and expose the structured payload on `detail` for callers that want
+    // to render something richer than a flat error line.
+    const message = typeof detail === 'string' ? detail : detail?.message
+    super(message || `Request failed with status ${status}`)
     this.status = status
+    this.detail = detail
   }
 }
 
@@ -54,7 +61,7 @@ async function parseResponse(response) {
     let detail
     try {
       const data = await response.json()
-      detail = typeof data.detail === 'string' ? data.detail : undefined
+      detail = data.detail
     } catch {
       detail = undefined
     }

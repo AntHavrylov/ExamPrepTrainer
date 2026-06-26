@@ -368,6 +368,44 @@ button:disabled {
   font-size: 14px;
 }
 
+.no-questions-notice {
+  background: var(--danger-soft);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.no-questions-notice h3 {
+  margin: 0;
+  color: var(--danger);
+}
+
+.no-questions-params {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-3);
+}
+
+.no-questions-params > div {
+  display: contents;
+}
+
+.no-questions-params dt {
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.no-questions-params dd {
+  margin: 0;
+}
+
+.no-questions-notice button {
+  align-self: flex-start;
+}
+
 .correct {
   color: var(--success);
   background: var(--success-soft);

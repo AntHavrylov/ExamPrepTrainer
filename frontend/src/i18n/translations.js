@@ -68,6 +68,11 @@ export const translations = {
     'startTraining.difficulty': 'Difficulty',
     'startTraining.starting': 'Starting...',
     'startTraining.startBtn': 'Start training',
+    'startTraining.language': 'Language',
+    'startTraining.noQuestionsTitle': 'No questions for this combination yet',
+    'startTraining.noQuestionsBody':
+      'There are no unused questions for the settings below — note these include the active language. Generate some in the Question Bank first, then come back to train.',
+    'startTraining.goToQuestionBank': 'Generate in Question Bank',
 
     'training.title': 'Training',
     'training.generatingQuestion': 'Generating question...',
@@ -234,6 +239,11 @@ export const translations = {
     'startTraining.difficulty': 'Складність',
     'startTraining.starting': 'Запуск...',
     'startTraining.startBtn': 'Почати тренування',
+    'startTraining.language': 'Мова',
+    'startTraining.noQuestionsTitle': 'Для цієї комбінації ще немає запитань',
+    'startTraining.noQuestionsBody':
+      'Немає невикористаних запитань для наведених нижче налаштувань — зверніть увагу, що серед них є й активна мова. Спочатку згенеруйте їх у Банку запитань, а потім поверніться до тренування.',
+    'startTraining.goToQuestionBank': 'Згенерувати в Банку запитань',
 
     'training.title': 'Тренування',
     'training.generatingQuestion': 'Генерація запитання...',
@@ -399,6 +409,11 @@ export const translations = {
     'startTraining.difficulty': 'Сложность',
     'startTraining.starting': 'Запуск...',
     'startTraining.startBtn': 'Начать тренировку',
+    'startTraining.language': 'Язык',
+    'startTraining.noQuestionsTitle': 'Для этой комбинации ещё нет вопросов',
+    'startTraining.noQuestionsBody':
+      'Нет неиспользованных вопросов для указанных ниже настроек — обратите внимание, что среди них есть и активный язык. Сначала сгенерируйте их в Банке вопросов, затем вернитесь к тренировке.',
+    'startTraining.goToQuestionBank': 'Сгенерировать в Банке вопросов',
 
     'training.title': 'Тренировка',
     'training.generatingQuestion': 'Генерация вопроса...',

@@ -83,7 +83,9 @@ function AppShell() {
       <main className="app-main">
         <div className="app-content">
           {view === 'sections' && <SectionsScreen />}
-          {view === 'start-training' && <StartTrainingScreen onStarted={goToTraining} />}
+          {view === 'start-training' && (
+            <StartTrainingScreen onStarted={goToTraining} onNavigate={navigate} />
+          )}
           {view === 'training' && sessionId && (
             <TrainingScreen sessionId={sessionId} onFinish={goToSummary} onInterrupt={goToSections} />
           )}

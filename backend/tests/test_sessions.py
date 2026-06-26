@@ -446,13 +446,53 @@ def test_next_question_reports_progress_and_blocks_past_the_target_count(client,
     assert sixth.status_code == 409
 
 
-def test_next_question_blocked_when_live_generation_disabled_and_pool_empty(client, make_user, monkeypatch):
+def test_start_session_blocked_when_live_generation_disabled_and_pool_empty(client, make_user, monkeypatch):
     from app.config import settings as app_settings
 
     monkeypatch.setattr(app_settings, "live_question_generation_enabled", False)
     headers = make_user("sess-live-gen-disabled@example.com")
     section_id = _create_section_with_document(client, headers)
+
+    # No questions in the bank for this combination, so the session must be
+    # rejected up front (rather than created and failing on its first /next),
+    # with the failing parameters - crucially incl. language - echoed back.
+    response = client.post(
+        "/sessions",
+        json={"section_ids": [section_id], "mode": "technical", "format": "open_ended"},
+        headers=headers,
+    )
+
+    assert response.status_code == 409
+    detail = response.json()["detail"]
+    assert detail["code"] == "no_questions"
+    assert detail["mode"] == "technical"
+    assert detail["format"] == "open_ended"
+    assert detail["language"] == "en"
+
+
+def test_next_question_blocked_when_pool_exhausted_mid_session(client, make_user, monkeypatch):
+    from app.config import settings as app_settings
+
+    monkeypatch.setattr(app_settings, "live_question_generation_enabled", False)
+    headers = make_user("sess-pool-exhausted@example.com")
+    section_id = _create_section_with_document(client, headers)
+
+    # Seed a single question so the session can start, then exhaust it - the
+    # next /next finds the pool empty and (live generation off) must refuse to
+    # silently generate, pointing the user back to the Question Bank instead.
+    _override_ai_client(_StubAIClient(OPEN_ENDED_QUESTION_JSON))
+    try:
+        generate_resp = client.post(
+            "/question-bank/generate",
+            json={"section_ids": [section_id], "mode": "technical", "format": "open_ended", "count": 1},
+            headers=headers,
+        )
+    finally:
+        _clear_ai_override()
+    assert generate_resp.status_code == 201
+
     session_id = _start_session(client, headers, section_id, "open_ended")
+    assert client.post(f"/sessions/{session_id}/next", headers=headers).status_code == 200
 
     stub = _StubAIClient(OPEN_ENDED_QUESTION_JSON)
     _override_ai_client(stub)

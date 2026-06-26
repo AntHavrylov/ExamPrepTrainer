@@ -133,6 +133,35 @@ def start_session(
 ) -> TrainingSession:
     get_owned_sections(db, payload.section_ids, current_user.id)
 
+    # The pool is keyed by language too (a question generated in one language is
+    # useless for a session running in another), and that language comes from
+    # the user's current setting rather than this request - so a combination
+    # that looks fully stocked in the Question Bank can still be empty for the
+    # active language. Check up front, using the exact same matching the session
+    # itself will use, so we never create a session that's doomed to fail on its
+    # first question with a confusing mid-session error.
+    scope = scope_key(payload.section_ids)
+    matching = matching_bank_rows(
+        db, current_user.id, payload.mode, payload.format, payload.difficulty, current_user.language, scope
+    )
+    unused = sum(1 for row in matching if row.used_at is None)
+
+    if unused == 0 and not settings.live_question_generation_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "no_questions",
+                "message": (
+                    "No unused questions available for this combination. "
+                    "Generate some from the Question Bank tab first."
+                ),
+                "mode": payload.mode,
+                "format": payload.format,
+                "difficulty": payload.difficulty,
+                "language": current_user.language,
+            },
+        )
+
     session = TrainingSession(
         user_id=current_user.id,
         mode=payload.mode,
@@ -150,11 +179,6 @@ def start_session(
         # session ever for this exact mode/format/difficulty/language/sections
         # combination) - if anything is already sitting there unused, the user's
         # first click is already covered and there's nothing to gain.
-        scope = scope_key(payload.section_ids)
-        matching = matching_bank_rows(
-            db, current_user.id, payload.mode, payload.format, payload.difficulty, current_user.language, scope
-        )
-        unused = sum(1 for row in matching if row.used_at is None)
         schedule_replenish_if_low(
             background_tasks,
             matching,

@@ -204,7 +204,12 @@ export default function TrainingScreen({ sessionId, onFinish, onInterrupt }) {
   if (!question) {
     return (
       <div className="training-screen">
-        <h2>{t('training.title')}</h2>
+        <div className="training-header">
+          <h2>{t('training.title')}</h2>
+          <button type="button" className="btn-danger" onClick={handleInterrupt}>
+            {t('training.interrupt')}
+          </button>
+        </div>
         {error ? (
           <>
             <p className="error" role="alert">
