@@ -276,20 +276,21 @@ export default function TrainingScreen({ sessionId, onFinish, onInterrupt }) {
 
       {!result && question.hint && (
         <div className="hint-block">
-          {showHint ? (
-            <p className="hint">{t('training.hint', { text: question.hint })}</p>
-          ) : (
-            <button type="button" className="btn-secondary" onClick={() => setShowHint(true)}>
-              {t('training.showHint')} <span className="shortcut-tag">h</span>
-            </button>
-          )}
+          <button type="button" className="btn-secondary" onClick={() => setShowHint((h) => !h)}>
+            {showHint ? t('training.hideHint') : t('training.showHint')} <span className="shortcut-tag">h</span>
+          </button>
+          {showHint && <p className="hint">{t('training.hint', { text: question.hint })}</p>}
         </div>
       )}
 
       {isQuiz && (
         <div className="quiz-options">
           {question.options.map((opt, idx) => {
-            const variant = result && idx === selectedIndex ? (result.is_correct ? 'correct' : 'incorrect') : ''
+            let variant = ''
+            if (result) {
+              if (idx === result.correct_index) variant = 'correct'
+              else if (idx === selectedIndex) variant = 'incorrect'
+            }
             return (
               <button
                 key={idx}

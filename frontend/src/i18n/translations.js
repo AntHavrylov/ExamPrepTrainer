@@ -73,6 +73,10 @@ export const translations = {
     'startTraining.noQuestionsBody':
       'There are no unused questions for the settings below — note these include the active language. Generate some in the Question Bank first, then come back to train.',
     'startTraining.goToQuestionBank': 'Generate in Question Bank',
+    'startTraining.selectAll': 'Select all',
+    'startTraining.deselectAll': 'Deselect all',
+
+    'questionBank.questionCount': '{shown} of {total} questions',
 
     'training.title': 'Training',
     'training.generatingQuestion': 'Generating question...',
@@ -81,6 +85,7 @@ export const translations = {
     'training.generatingNext': 'Generating your next question...',
     'training.hint': 'Hint: {text}',
     'training.showHint': 'Show hint',
+    'training.hideHint': 'Hide hint',
     'training.answerPlaceholder': 'Type your answer... (Ctrl+Enter to submit)',
     'training.scoring': 'Scoring...',
     'training.submitAnswer': 'Submit answer',
@@ -244,6 +249,10 @@ export const translations = {
     'startTraining.noQuestionsBody':
       'Немає невикористаних запитань для наведених нижче налаштувань — зверніть увагу, що серед них є й активна мова. Спочатку згенеруйте їх у Банку запитань, а потім поверніться до тренування.',
     'startTraining.goToQuestionBank': 'Згенерувати в Банку запитань',
+    'startTraining.selectAll': 'Вибрати всі',
+    'startTraining.deselectAll': 'Зняти вибір',
+
+    'questionBank.questionCount': '{shown} з {total} запитань',
 
     'training.title': 'Тренування',
     'training.generatingQuestion': 'Генерація запитання...',
@@ -252,6 +261,7 @@ export const translations = {
     'training.generatingNext': 'Генерація наступного запитання...',
     'training.hint': 'Підказка: {text}',
     'training.showHint': 'Показати підказку',
+    'training.hideHint': 'Сховати підказку',
     'training.answerPlaceholder': 'Введіть свою відповідь... (Ctrl+Enter, щоб надіслати)',
     'training.scoring': 'Оцінювання...',
     'training.submitAnswer': 'Надіслати відповідь',
@@ -414,6 +424,10 @@ export const translations = {
     'startTraining.noQuestionsBody':
       'Нет неиспользованных вопросов для указанных ниже настроек — обратите внимание, что среди них есть и активный язык. Сначала сгенерируйте их в Банке вопросов, затем вернитесь к тренировке.',
     'startTraining.goToQuestionBank': 'Сгенерировать в Банке вопросов',
+    'startTraining.selectAll': 'Выбрать все',
+    'startTraining.deselectAll': 'Снять выбор',
+
+    'questionBank.questionCount': '{shown} из {total} вопросов',
 
     'training.title': 'Тренировка',
     'training.generatingQuestion': 'Генерация вопроса...',
@@ -422,6 +436,7 @@ export const translations = {
     'training.generatingNext': 'Генерация следующего вопроса...',
     'training.hint': 'Подсказка: {text}',
     'training.showHint': 'Показать подсказку',
+    'training.hideHint': 'Скрыть подсказку',
     'training.answerPlaceholder': 'Введите ваш ответ... (Ctrl+Enter, чтобы отправить)',
     'training.scoring': 'Оценивание...',
     'training.submitAnswer': 'Отправить ответ',

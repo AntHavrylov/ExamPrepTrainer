@@ -20,13 +20,25 @@ const DIFFICULTY_KEYS = {
   hard: 'enums.difficultyHard',
 }
 
+const SETTINGS_KEY = 'lastTrainingSettings'
+
+function loadSavedSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
 export default function StartTrainingScreen({ onStarted, onNavigate }) {
   const { t } = useLanguage()
   const [sections, setSections] = useState([])
-  const [selectedIds, setSelectedIds] = useState([])
-  const [mode, setMode] = useState('technical')
-  const [format, setFormat] = useState('quiz')
-  const [difficulty, setDifficulty] = useState('medium')
+  const saved = loadSavedSettings()
+  const [selectedIds, setSelectedIds] = useState(saved?.selectedIds ?? [])
+  const [mode, setMode] = useState(saved?.mode ?? 'technical')
+  const [format, setFormat] = useState(saved?.format ?? 'quiz')
+  const [difficulty, setDifficulty] = useState(saved?.difficulty ?? 'medium')
   const [error, setError] = useState(null)
   // Set when the backend rejects the start because no unused questions match
   // the chosen combination (incl. the active language) - carries the exact
@@ -45,6 +57,12 @@ export default function StartTrainingScreen({ onStarted, onNavigate }) {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
 
+  function toggleSelectAll() {
+    setSelectedIds((prev) =>
+      prev.length === sections.length ? [] : sections.map((s) => s.id),
+    )
+  }
+
   async function handleStart(e) {
     e.preventDefault()
     if (selectedIds.length === 0) {
@@ -54,6 +72,7 @@ export default function StartTrainingScreen({ onStarted, onNavigate }) {
     setError(null)
     setNoQuestions(null)
     setStarting(true)
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ selectedIds, mode, format, difficulty }))
     try {
       const session = await api.startSession(selectedIds, mode, format, difficulty)
       onStarted(session.id)
@@ -107,7 +126,16 @@ export default function StartTrainingScreen({ onStarted, onNavigate }) {
 
       <form onSubmit={handleStart}>
         <div className="field-group">
-          <span className="field-label">{t('startTraining.sectionsLegend')}</span>
+          <div className="field-label-row">
+            <span className="field-label">{t('startTraining.sectionsLegend')}</span>
+            {sections.length > 1 && (
+              <button type="button" className="btn-link" onClick={toggleSelectAll}>
+                {selectedIds.length === sections.length
+                  ? t('startTraining.deselectAll')
+                  : t('startTraining.selectAll')}
+              </button>
+            )}
+          </div>
           <div className="section-toggle-list">
             {sections.map((s) => {
               const checked = selectedIds.includes(s.id)

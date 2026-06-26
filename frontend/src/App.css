@@ -260,6 +260,25 @@ label {
   color: var(--text-secondary);
 }
 
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 13px;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.btn-link:hover { color: var(--accent-hover); }
+
 .section-toggle-list {
   display: flex;
   flex-direction: column;
@@ -468,6 +487,13 @@ button:disabled {
 .section-list,
 .document-list,
 .summary-list,
+.question-bank-count {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: var(--space-2) 0;
+  text-align: right;
+}
+
 .topic-list,
 .question-bank-list {
   list-style: none;

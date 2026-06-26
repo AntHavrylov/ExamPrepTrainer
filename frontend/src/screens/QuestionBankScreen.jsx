@@ -91,6 +91,12 @@ export default function QuestionBankScreen() {
     setGenSectionIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
 
+  function toggleSelectAllGen() {
+    setGenSectionIds((prev) =>
+      prev.length === sections.length ? [] : sections.map((s) => s.id),
+    )
+  }
+
   function toggleExpanded(id) {
     setExpandedIds((prev) => {
       const next = new Set(prev)
@@ -153,7 +159,16 @@ export default function QuestionBankScreen() {
         <h3>{t('questionBank.generateTitle')}</h3>
         <form onSubmit={handleGenerate} className="settings-form">
           <div className="field-group">
-            <span className="field-label">{t('startTraining.sectionsLegend')}</span>
+            <div className="field-label-row">
+              <span className="field-label">{t('startTraining.sectionsLegend')}</span>
+              {sections.length > 1 && (
+                <button type="button" className="btn-link" onClick={toggleSelectAllGen}>
+                  {genSectionIds.length === sections.length
+                    ? t('startTraining.deselectAll')
+                    : t('startTraining.selectAll')}
+                </button>
+              )}
+            </div>
             <div className="section-toggle-list">
               {sections.map((s) => {
                 const checked = genSectionIds.includes(s.id)
@@ -287,6 +302,12 @@ export default function QuestionBankScreen() {
           {t('questionBank.filterUnusedOnly')}
         </label>
       </div>
+
+      {!loading && (
+        <p className="question-bank-count">
+          {t('questionBank.questionCount', { shown: visibleItems.length, total: items.length })}
+        </p>
+      )}
 
       {loading ? (
         <p>{t('common.loading')}</p>
