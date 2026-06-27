@@ -253,4 +253,6 @@ class QuestionBankItemRead(BaseModel):
     hint: str
     explanation: str
     used_at: datetime | None = None
+    asked_count: int = 0
+    correct_answer_count: int = 0
     created_at: datetime

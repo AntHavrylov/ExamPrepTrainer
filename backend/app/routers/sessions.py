@@ -15,7 +15,7 @@ from app.ai.provider import AIProvider
 from app.auth.deps import get_current_user
 from app.config import settings
 from app.db import get_db, get_session_factory
-from app.models import Attempt, Section, User
+from app.models import Attempt, QuestionBank, Section, User
 from app.models import Session as TrainingSession
 from app.question_pool import (
     bank_rows_from_batch,
@@ -40,6 +40,86 @@ from app.schemas import (
 from app.section_access import get_owned_sections
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
+
+# In-memory plan cache: session_id → [QuestionBank.id, ...] in serving order.
+# Built once on the first next_question call; keyed by session id so it
+# survives across the whole session without re-shuffling on every request.
+_session_plans: dict[int, list[int]] = {}
+
+
+def _build_session_plan(session, matching: list) -> list[int]:
+    """
+    For multi-section "or" sessions:
+    1. Randomly assign a section to each question slot (session-seeded so
+       the same session always produces the same assignment).
+    2. Fill each slot from that section's bank pool (unused rows first,
+       then by id for stability).
+    3. If a section runs dry, fall back to the best available row from any
+       section so the plan always has target_question_count entries.
+    Returns a list of QuestionBank row IDs in the order they should be served.
+    """
+    rng = random.Random(session.id)
+    n = session.target_question_count
+    section_ids = list(session.section_ids)
+    section_set = set(section_ids)
+
+    # Random section index for every question slot
+    assignments = [rng.choice(section_ids) for _ in range(n)]
+
+    # Group bank rows into per-section pools.
+    # Rows with combined section_ids (e.g. [1,2,3]) are spread evenly by
+    # row.id % number-of-matched-sections so no single section hogs them all.
+    by_section: dict[int, list] = defaultdict(list)
+    for row in sorted(matching, key=lambda r: r.id):
+        matched = sorted(sid for sid in row.section_ids if sid in section_set)
+        if matched:
+            by_section[matched[row.id % len(matched)]].append(row)
+
+    # Sort each pool so the plan serves weak questions first.
+    # Success rate: correct_answer_count / asked_count (0.5 for never-asked = neutral).
+    # Within the same success-rate tier we shuffle randomly so sessions don't
+    # always drill the same question first.
+    def _sort_pool(pool: list, rng: random.Random) -> list:
+        def success_rate(r) -> float:
+            return r.correct_answer_count / r.asked_count if r.asked_count else 0.5
+
+        unused = [r for r in pool if r.used_at is None]
+        used   = [r for r in pool if r.used_at is not None]
+
+        # Within each group sort weakest first, shuffle ties with session RNG
+        unused.sort(key=lambda r: (success_rate(r), rng.random()))
+        used.sort(key=lambda r: (success_rate(r), r.used_at))  # LRU as tiebreak for used
+        return unused + used
+
+    for sid in sorted(by_section):
+        by_section[sid] = _sort_pool(by_section[sid], rng)
+
+    # Global fallback pool: same ordering across all sections
+    fallback = _sort_pool(list(matching), rng)
+
+    queues = {sid: list(by_section.get(sid, [])) for sid in section_ids}
+    allocated: set[int] = set()
+    plan: list[int] = []
+
+    for sid in assignments:
+        row = None
+        while queues[sid]:
+            c = queues[sid].pop(0)
+            if c.id not in allocated:
+                row = c
+                break
+        if row is None:
+            # Section exhausted — pick from global fallback
+            for f in fallback:
+                if f.id not in allocated:
+                    row = f
+                    break
+        if row is not None:
+            plan.append(row.id)
+            allocated.add(row.id)
+
+    return plan
+
 
 _QUIZ_CORRECT_FEEDBACK = {
     "en": "Correct!",
@@ -215,6 +295,7 @@ def finish_session(
         session.finished_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(session)
+    _session_plans.pop(session_id, None)
     return session
 
 
@@ -246,55 +327,16 @@ async def next_question(
         current_user.language, scope, section_mode=session.section_mode,
     )
     if session.section_mode == "or" and len(session.section_ids) > 1:
-        # Build a quota-based interleaved order seeded by session id so it is
-        # random but stable across successive next_question calls.
-        #
-        # Quotas distribute target_question_count evenly across sections:
-        #   base = n // k questions per section, first `extra` sections get one more.
-        # The shuffled `active` list randomises both the round-robin order and
-        # which sections absorb the remainder — so with 4 questions and 5 sections
-        # a different random section is skipped each session instead of always E.
-        rng = random.Random(session.id)
-        section_set = set(session.section_ids)
+        if session.id not in _session_plans:
+            _session_plans[session.id] = _build_session_plan(session, matching)
 
-        by_section: dict[int, list] = defaultdict(list)
-        for row in sorted(matching, key=lambda r: r.id):
-            for sid in row.section_ids:
-                if sid in section_set:
-                    by_section[sid].append(row)
-                    break
+        plan = _session_plans[session.id]
+        by_id = {row.id: row for row in matching}
 
-        for sid in sorted(by_section):
-            rng.shuffle(by_section[sid])
-
-        active = [sid for sid in session.section_ids if by_section[sid]]
-        rng.shuffle(active)
-        k = len(active)
-
-        if k == 0:
-            candidate = None
-        else:
-            n = session.target_question_count
-            base = n // k
-            extra = n % k
-            quota = {sid: base + (1 if i < extra else 0) for i, sid in enumerate(active)}
-
-            interleaved = []
-            for round_i in range(max(quota.values())):
-                for sid in active:
-                    if round_i < quota[sid] and round_i < len(by_section[sid]):
-                        interleaved.append(by_section[sid][round_i])
-
-            # Append overflow questions so recycling still has candidates
-            seen = {id(row) for row in interleaved}
-            for sid in active:
-                for row in by_section[sid]:
-                    if id(row) not in seen:
-                        interleaved.append(row)
-
-            candidate = next((row for row in interleaved if row.used_at is None), None)
-            if candidate is None and matching:
-                candidate = min(matching, key=lambda r: r.used_at)
+        candidate = by_id.get(plan[existing_count]) if existing_count < len(plan) else None
+        if candidate is None and matching:
+            # Plan exhausted or question removed — recycle LRU
+            candidate = min(matching, key=lambda r: r.used_at or datetime.min.replace(tzinfo=timezone.utc))
     else:
         candidate = next((row for row in matching if row.used_at is None), None)
         if candidate is None and matching:
@@ -362,9 +404,11 @@ async def next_question(
         candidate = new_rows[0]
 
     candidate.used_at = datetime.now(timezone.utc)
+    candidate.asked_count += 1
     unused_after = sum(1 for row in matching if row.used_at is None)
     attempt = Attempt(
         session_id=session.id,
+        question_bank_id=candidate.id,
         question=candidate.question,
         category=candidate.category,
         format=session.format,
@@ -457,6 +501,10 @@ async def answer(
         attempt.feedback = _quiz_feedback(
             current_user.language, is_correct, attempt.options[attempt.correct_index]
         )
+        if is_correct and attempt.question_bank_id is not None:
+            qb = db.get(QuestionBank, attempt.question_bank_id)
+            if qb is not None:
+                qb.correct_answer_count += 1
         db.commit()
         db.refresh(attempt)
         return _attempt_to_result(attempt)
@@ -492,6 +540,10 @@ async def answer(
     attempt.answer = payload.answer
     attempt.score = evaluation["score"]
     attempt.feedback = stored_feedback
+    if evaluation["score"] >= 7 and attempt.question_bank_id is not None:
+        qb = db.get(QuestionBank, attempt.question_bank_id)
+        if qb is not None:
+            qb.correct_answer_count += 1
     db.commit()
     db.refresh(attempt)
 
@@ -588,6 +640,10 @@ async def answer_stream(
             stored_attempt.answer = answer_text
             stored_attempt.score = evaluation["score"]
             stored_attempt.feedback = stored_feedback
+            if evaluation["score"] >= 7 and stored_attempt.question_bank_id is not None:
+                qb = stream_db.get(QuestionBank, stored_attempt.question_bank_id)
+                if qb is not None:
+                    qb.correct_answer_count += 1
             stream_db.commit()
             stream_db.refresh(stored_attempt)
             db_result = _attempt_to_result(

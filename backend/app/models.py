@@ -90,6 +90,7 @@ class Attempt(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     session_id: Mapped[int] = mapped_column(ForeignKey("sessions.id"), nullable=False, index=True)
+    question_bank_id: Mapped[int | None] = mapped_column(ForeignKey("question_bank.id", ondelete="SET NULL"))
     question: Mapped[str] = mapped_column(Text, nullable=False)
     category: Mapped[str] = mapped_column(String(20), nullable=False)
     format: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -125,4 +126,6 @@ class QuestionBank(Base):
     hint: Mapped[str] = mapped_column(Text, nullable=False)
     explanation: Mapped[str] = mapped_column(Text, nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    asked_count: Mapped[int] = mapped_column(default=0, server_default="0", nullable=False)
+    correct_answer_count: Mapped[int] = mapped_column(default=0, server_default="0", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
