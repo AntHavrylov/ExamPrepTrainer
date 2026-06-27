@@ -293,6 +293,7 @@ async def next_question(
         correct_index=candidate.correct_index,
         hint=candidate.hint,
         explanation=candidate.explanation,
+        section_ids=candidate.section_ids,
     )
 
     db.add(attempt)
@@ -556,20 +557,32 @@ def get_stats(
         for section in db.scalars(select(Section).where(Section.id.in_(all_section_ids)))
     }
 
-    # Build per-session score history.  Because attempts are not individually
-    # tagged with a section, we spread the session's overall average equally
-    # across all sections that session covered.
+    # Build per-session score history with accurate per-section scores.
+    # An attempt is attributed to a section only when the bank row it came from
+    # was generated for that single section (section_ids length == 1).  Questions
+    # generated for a combined scope (e.g. [A, B]) cannot be split, so they only
+    # contribute to the overall session score, not to individual section scores.
+    def _attempt_sec_ids(attempt: Attempt, session: TrainingSession) -> list[int]:
+        return attempt.section_ids if attempt.section_ids is not None else session.section_ids
+
+    def _section_scores_for_group(grp: list[Attempt], session: TrainingSession) -> dict[int, float]:
+        per_section: dict[int, list[int]] = defaultdict(list)
+        for attempt in grp:
+            sec_ids = _attempt_sec_ids(attempt, session)
+            if len(sec_ids) == 1 and sec_ids[0] in section_names:
+                per_section[sec_ids[0]].append(attempt.score)
+        return {
+            sec_id: round(sum(scores) / len(scores), 1)
+            for sec_id, scores in per_section.items()
+        }
+
     score_history = sorted(
         [
             ScorePoint(
                 session_id=sid,
                 created_at=session_by_id[sid].started_at,
                 score=round(sum(a.score for a in grp) / len(grp), 1),
-                section_scores={
-                    sec_id: round(sum(a.score for a in grp) / len(grp), 1)
-                    for sec_id in session_by_id[sid].section_ids
-                    if sec_id in section_names
-                },
+                section_scores=_section_scores_for_group(grp, session_by_id[sid]),
             )
             for sid, grp in session_groups.items()
             if sid in session_by_id
@@ -581,7 +594,9 @@ def get_stats(
 
     topic_scores: dict[int, list[int]] = {}
     for attempt in attempts:
-        for section_id in session_by_id[attempt.session_id].section_ids:
+        sec_ids = _attempt_sec_ids(attempt, session_by_id[attempt.session_id])
+        if len(sec_ids) == 1:
+            section_id = sec_ids[0]
             if section_id in section_names:
                 topic_scores.setdefault(section_id, []).append(attempt.score)
 

@@ -145,6 +145,9 @@ export const translations = {
     'progress.chartAverageLabel': 'Your average ({score} / 10)',
     'progress.trainTopic': 'Train this topic',
     'progress.overall': 'Overall',
+    'progress.historyLimit': 'Show:',
+    'progress.historyLast': 'Last {n}',
+    'progress.historyAll': 'All',
 
     'settings.loading': 'Loading settings...',
     'settings.title': 'AI settings',
@@ -339,6 +342,9 @@ export const translations = {
     'progress.chartAverageLabel': 'Ваше середнє ({score} / 10)',
     'progress.trainTopic': 'Тренувати цю тему',
     'progress.overall': 'Загальне',
+    'progress.historyLimit': 'Показати:',
+    'progress.historyLast': 'Останні {n}',
+    'progress.historyAll': 'Всі',
 
     'settings.loading': 'Завантаження налаштувань...',
     'settings.title': 'Налаштування AI',
@@ -532,6 +538,9 @@ export const translations = {
     'progress.chartAverageLabel': 'Ваше среднее ({score} / 10)',
     'progress.trainTopic': 'Тренировать эту тему',
     'progress.overall': 'Общее',
+    'progress.historyLimit': 'Показать:',
+    'progress.historyLast': 'Последние {n}',
+    'progress.historyAll': 'Все',
 
     'settings.loading': 'Загрузка настроек...',
     'settings.title': 'Настройки AI',

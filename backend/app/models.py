@@ -93,6 +93,7 @@ class Attempt(Base):
     question: Mapped[str] = mapped_column(Text, nullable=False)
     category: Mapped[str] = mapped_column(String(20), nullable=False)
     format: Mapped[str] = mapped_column(String(20), nullable=False)
+    section_ids: Mapped[list[int] | None] = mapped_column(JSON)
 
     options: Mapped[list[str] | None] = mapped_column(JSON)
     correct_index: Mapped[int | None] = mapped_column()

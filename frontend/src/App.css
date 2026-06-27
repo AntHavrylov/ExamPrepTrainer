@@ -1129,10 +1129,36 @@ textarea {
   vector-effect: non-scaling-stroke;
 }
 
+.chart-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.chart-header h3 {
+  margin: 0;
+}
+
+.history-limit-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.history-limit-select {
+  font-size: 13px;
+  padding: 2px 6px;
+}
+
 .chart-caption {
   font-size: 13px;
   color: var(--text-secondary);
-  margin: 0 0 var(--space-2);
+  margin: var(--space-1) 0 var(--space-2);
 }
 
 .chart-toggles {

@@ -58,21 +58,37 @@ function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
   return (
     <div className="chart-tooltip">
-      <p className="chart-tooltip-date">{label}</p>
-      {payload.map((entry) => (
-        <p key={entry.dataKey} style={{ color: entry.color }}>
-          {entry.name}: <strong>{Number(entry.value).toFixed(1)}</strong>
-        </p>
-      ))}
+      <p className="chart-tooltip-date">Session #{label}</p>
+      {payload.map((entry) => {
+        const date = entry.payload[`${entry.dataKey}_date`]
+        return (
+          <p key={entry.dataKey} style={{ color: entry.color }}>
+            {entry.name}: <strong>{Number(entry.value).toFixed(1)}%</strong>
+            {date ? <span style={{ opacity: 0.6, fontSize: '0.85em' }}> · {date}</span> : null}
+          </p>
+        )
+      })}
     </div>
   )
 }
+
+const HISTORY_LIMIT_OPTIONS = [5, 10, 20, 50, 0]
 
 export default function ProgressScreen({ onTrainSection }) {
   const { t } = useLanguage()
   const [stats, setStats] = useState(null)
   const [error, setError] = useState(null)
   const [hiddenLines, setHiddenLines] = useState(() => new Set())
+  const [historyLimit, setHistoryLimit] = useState(() => {
+    const stored = localStorage.getItem('stats_history_limit')
+    return stored !== null ? Number(stored) : 10
+  })
+
+  function handleHistoryLimitChange(e) {
+    const val = Number(e.target.value)
+    setHistoryLimit(val)
+    localStorage.setItem('stats_history_limit', val)
+  }
 
   useEffect(() => {
     api
@@ -109,14 +125,51 @@ export default function ProgressScreen({ onTrainSection }) {
   // section_names keys are strings from JSON; sort for stable color assignment
   const sectionIds = Object.keys(stats.section_names).sort()
 
-  const chartData = history.map((point) => {
-    const entry = {
-      date: new Date(point.created_at).toLocaleDateString(),
-      overall: point.score,
-    }
+  const limit = historyLimit > 0 ? -historyLimit : undefined
+
+  // Overall series: one point per global session, trimmed to limit.
+  const overallSeries = history.slice(limit).map(point => ({
+    score: point.score,
+    date: new Date(point.created_at).toLocaleDateString(),
+  }))
+
+  // Per-section series: only sessions where that section had attributable scores,
+  // each independently trimmed to the same limit.
+  const sectionSeries = {}
+  sectionIds.forEach((id) => {
+    sectionSeries[id] = history
+      .filter(point => point.section_scores[Number(id)] != null)
+      .slice(limit)
+      .map(point => ({
+        score: point.section_scores[Number(id)],
+        date: new Date(point.created_at).toLocaleDateString(),
+      }))
+  })
+
+  // Right-align: all series share the same rightmost position (their latest
+  // session). Shorter histories start later on the X axis.
+  const maxLen = Math.max(
+    overallSeries.length,
+    ...Object.values(sectionSeries).map(s => s.length),
+    0,
+  )
+
+  const chartData = Array.from({ length: maxLen }, (_, i) => {
+    const entry = { x: i + 1 }
+
+    const overallOffset = maxLen - overallSeries.length
+    const oi = i - overallOffset
+    entry.overall = oi >= 0 ? overallSeries[oi].score * 10 : null
+    entry.overall_date = oi >= 0 ? overallSeries[oi].date : null
+
     sectionIds.forEach((id) => {
-      entry[`s${id}`] = point.section_scores[Number(id)] ?? null
+      const series = sectionSeries[id]
+      const offset = maxLen - series.length
+      const si = i - offset
+      entry[`s${id}`] = si >= 0 ? series[si].score * 10 : null
+      entry[`s${id}_date`] = si >= 0 ? series[si].date : null
     })
+
     return entry
   })
 
@@ -161,7 +214,19 @@ export default function ProgressScreen({ onTrainSection }) {
         )}
       </div>
 
-      <h3>{t('progress.scoreHistory')}</h3>
+      <div className="chart-header">
+        <h3>{t('progress.scoreHistory')}</h3>
+        <label className="history-limit-label">
+          {t('progress.historyLimit')}
+          <select value={historyLimit} onChange={handleHistoryLimitChange} className="history-limit-select">
+            {HISTORY_LIMIT_OPTIONS.map(n => (
+              <option key={n} value={n}>
+                {n === 0 ? t('progress.historyAll') : t('progress.historyLast', { n })}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       <p className="chart-caption">{t('progress.chartCaption')}</p>
 
       <div className="chart-toggles">
@@ -173,35 +238,42 @@ export default function ProgressScreen({ onTrainSection }) {
         >
           {t('progress.overall')}
         </button>
-        {sectionIds.map((id, idx) => {
-          const key = `s${id}`
-          return (
-            <button
-              key={id}
-              type="button"
-              className={`chart-toggle${hiddenLines.has(key) ? ' off' : ''}`}
-              style={{ '--toggle-color': SECTION_COLORS[idx % SECTION_COLORS.length] }}
-              onClick={() => toggleLine(key)}
-            >
-              {stats.section_names[id]}
-            </button>
-          )
-        })}
+        {sectionIds
+          .filter(id => sectionSeries[id].length > 0)
+          .map((id, idx) => {
+            const key = `s${id}`
+            return (
+              <button
+                key={id}
+                type="button"
+                className={`chart-toggle${hiddenLines.has(key) ? ' off' : ''}`}
+                style={{ '--toggle-color': SECTION_COLORS[idx % SECTION_COLORS.length] }}
+                onClick={() => toggleLine(key)}
+              >
+                {stats.section_names[id]}
+              </button>
+            )
+          })}
       </div>
 
       <div className="recharts-wrap">
         <ResponsiveContainer width="100%" height={220}>
           <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-            <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#94a3b8' }} />
-            <YAxis domain={[0, 10]} tick={{ fontSize: 11, fill: '#94a3b8' }} width={28} />
+            <XAxis dataKey="x" tick={{ fontSize: 11, fill: '#94a3b8' }} />
+            <YAxis
+              domain={[0, 100]}
+              tickFormatter={v => `${v}%`}
+              tick={{ fontSize: 11, fill: '#94a3b8' }}
+              width={36}
+            />
             <Tooltip content={<CustomTooltip />} />
             <ReferenceLine
-              y={stats.average_score}
+              y={stats.average_score * 10}
               stroke={OVERALL_COLOR}
               strokeDasharray="4 2"
               strokeOpacity={0.5}
-              label={{ value: stats.average_score.toFixed(1), fill: '#94a3b8', fontSize: 10 }}
+              label={{ value: `${(stats.average_score * 10).toFixed(0)}%`, fill: '#94a3b8', fontSize: 10 }}
             />
             {!hiddenLines.has('overall') && (
               <Line
@@ -212,27 +284,29 @@ export default function ProgressScreen({ onTrainSection }) {
                 strokeWidth={2}
                 dot={{ r: 3, fill: OVERALL_COLOR }}
                 activeDot={{ r: 5 }}
-                connectNulls
+                connectNulls={false}
               />
             )}
-            {sectionIds.map((id, idx) => {
-              const key = `s${id}`
-              if (hiddenLines.has(key)) return null
-              const color = SECTION_COLORS[idx % SECTION_COLORS.length]
-              return (
-                <Line
-                  key={key}
-                  type="monotone"
-                  dataKey={key}
-                  name={stats.section_names[id]}
-                  stroke={color}
-                  strokeWidth={1.5}
-                  dot={{ r: 2.5, fill: color }}
-                  activeDot={{ r: 4 }}
-                  connectNulls
-                />
-              )
-            })}
+            {sectionIds
+              .filter(id => sectionSeries[id].length > 0)
+              .map((id, idx) => {
+                const key = `s${id}`
+                if (hiddenLines.has(key)) return null
+                const color = SECTION_COLORS[idx % SECTION_COLORS.length]
+                return (
+                  <Line
+                    key={key}
+                    type="monotone"
+                    dataKey={key}
+                    name={stats.section_names[id]}
+                    stroke={color}
+                    strokeWidth={1.5}
+                    dot={{ r: 2.5, fill: color }}
+                    activeDot={{ r: 4 }}
+                    connectNulls={false}
+                  />
+                )
+              })}
           </LineChart>
         </ResponsiveContainer>
       </div>
