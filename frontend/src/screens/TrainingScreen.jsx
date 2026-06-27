@@ -83,6 +83,7 @@ export default function TrainingScreen({ sessionId, onFinish, onInterrupt }) {
             hint: last.hint,
             question_number: session.attempts.length,
             total_questions: session.target_question_count,
+            section_names: last.section_names ?? [],
           })
           setLoading(false)
           setLoadingNext(false)
@@ -264,6 +265,9 @@ export default function TrainingScreen({ sessionId, onFinish, onInterrupt }) {
         </button>
       </div>
       <div className="question-card">
+        {question.section_names?.length > 0 && (
+          <p className="section-name">{question.section_names.join(' · ')}</p>
+        )}
         <p className="category">{question.category}</p>
         <p className="question">{question.question}</p>
       </div>

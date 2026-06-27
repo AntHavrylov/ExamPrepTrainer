@@ -59,6 +59,9 @@ export default function SummaryScreen({ sessionId, onDone, onTrainAgain }) {
           const showExplanation = a.explanation
           return (
             <li key={a.id}>
+              {a.section_names?.length > 0 && (
+                <p className="section-name">{a.section_names.join(' · ')}</p>
+              )}
               <p className="question">{a.question}</p>
               {isQuiz && a.options && (
                 <p className={wrongQuiz ? 'incorrect' : 'correct'}>

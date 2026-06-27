@@ -1,4 +1,5 @@
 import json
+import random
 from collections import defaultdict
 from datetime import datetime, timezone
 
@@ -104,8 +105,9 @@ def _attempt_to_result(
     )
 
 
-def _attempt_to_summary(attempt: Attempt) -> AttemptSummaryRead:
+def _attempt_to_summary(attempt: Attempt, section_map: dict[int, str] | None = None) -> AttemptSummaryRead:
     answered = attempt.score is not None
+    section_names = [section_map[sid] for sid in (attempt.section_ids or []) if sid in (section_map or {})]
     return AttemptSummaryRead(
         id=attempt.id,
         question=attempt.question,
@@ -120,6 +122,7 @@ def _attempt_to_summary(attempt: Attempt) -> AttemptSummaryRead:
         created_at=attempt.created_at,
         hint=attempt.hint,
         explanation=attempt.explanation if answered else None,
+        section_names=section_names,
     )
 
 
@@ -242,10 +245,61 @@ async def next_question(
         db, current_user.id, session.mode, session.format, session.difficulty,
         current_user.language, scope, section_mode=session.section_mode,
     )
-    candidate = next((row for row in matching if row.used_at is None), None)
-    if candidate is None and matching:
-        # All questions have been seen — recycle, starting with the oldest.
-        candidate = min(matching, key=lambda r: r.used_at)
+    if session.section_mode == "or" and len(session.section_ids) > 1:
+        # Build a quota-based interleaved order seeded by session id so it is
+        # random but stable across successive next_question calls.
+        #
+        # Quotas distribute target_question_count evenly across sections:
+        #   base = n // k questions per section, first `extra` sections get one more.
+        # The shuffled `active` list randomises both the round-robin order and
+        # which sections absorb the remainder — so with 4 questions and 5 sections
+        # a different random section is skipped each session instead of always E.
+        rng = random.Random(session.id)
+        section_set = set(session.section_ids)
+
+        by_section: dict[int, list] = defaultdict(list)
+        for row in sorted(matching, key=lambda r: r.id):
+            for sid in row.section_ids:
+                if sid in section_set:
+                    by_section[sid].append(row)
+                    break
+
+        for sid in sorted(by_section):
+            rng.shuffle(by_section[sid])
+
+        active = [sid for sid in session.section_ids if by_section[sid]]
+        rng.shuffle(active)
+        k = len(active)
+
+        if k == 0:
+            candidate = None
+        else:
+            n = session.target_question_count
+            base = n // k
+            extra = n % k
+            quota = {sid: base + (1 if i < extra else 0) for i, sid in enumerate(active)}
+
+            interleaved = []
+            for round_i in range(max(quota.values())):
+                for sid in active:
+                    if round_i < quota[sid] and round_i < len(by_section[sid]):
+                        interleaved.append(by_section[sid][round_i])
+
+            # Append overflow questions so recycling still has candidates
+            seen = {id(row) for row in interleaved}
+            for sid in active:
+                for row in by_section[sid]:
+                    if id(row) not in seen:
+                        interleaved.append(row)
+
+            candidate = next((row for row in interleaved if row.used_at is None), None)
+            if candidate is None and matching:
+                candidate = min(matching, key=lambda r: r.used_at)
+    else:
+        candidate = next((row for row in matching if row.used_at is None), None)
+        if candidate is None and matching:
+            # All questions have been seen — recycle, starting with the oldest.
+            candidate = min(matching, key=lambda r: r.used_at)
 
     if candidate is None:
         if not settings.live_question_generation_enabled:
@@ -345,6 +399,10 @@ async def next_question(
             session_factory,
         )
 
+    sec_names = [
+        s.name
+        for s in db.scalars(select(Section).where(Section.id.in_(candidate.section_ids)))
+    ]
     return NextQuestionRead(
         attempt_id=attempt.id,
         question=attempt.question,
@@ -353,6 +411,7 @@ async def next_question(
         hint=attempt.hint,
         question_number=existing_count + 1,
         total_questions=session.target_question_count,
+        section_names=sec_names,
     )
 
 
@@ -659,6 +718,12 @@ def get_session(
     scored = [a.score for a in attempts if a.score is not None]
     average_score = sum(scored) / len(scored) if scored else None
 
+    all_section_ids = {sid for a in attempts for sid in (a.section_ids or [])}
+    section_map = {
+        s.id: s.name
+        for s in db.scalars(select(Section).where(Section.id.in_(all_section_ids)))
+    }
+
     return SessionSummaryRead(
         id=session.id,
         mode=session.mode,
@@ -669,7 +734,7 @@ def get_session(
         section_mode=session.section_mode,
         started_at=session.started_at,
         finished_at=session.finished_at,
-        attempts=[_attempt_to_summary(a) for a in attempts],
+        attempts=[_attempt_to_summary(a, section_map) for a in attempts],
         average_score=average_score,
     )
 

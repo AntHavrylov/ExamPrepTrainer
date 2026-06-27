@@ -137,6 +137,7 @@ class NextQuestionRead(BaseModel):
     hint: str
     question_number: int
     total_questions: int
+    section_names: list[str] = []
 
 
 class AnswerRequest(BaseModel):
@@ -170,6 +171,7 @@ class AttemptSummaryRead(BaseModel):
     created_at: datetime
     hint: str | None = None
     explanation: str | None = None
+    section_names: list[str] = []
 
 
 class SessionSummaryRead(SessionRead):
