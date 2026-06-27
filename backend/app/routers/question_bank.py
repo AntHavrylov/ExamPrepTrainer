@@ -95,29 +95,52 @@ async def _run_generation(
     db = session_factory()
     try:
         sections = get_owned_sections(db, payload.section_ids, user_id)
-        scope = scope_key(payload.section_ids)
-        matching = matching_bank_rows(
-            db, user_id, payload.mode, payload.format, payload.difficulty, language, scope
-        )
-        avoid_themes = [row.theme for row in matching]
 
-        # generate_batch accesses section.documents (lazy-loaded) so the
-        # session must stay open until it returns.
-        generated_batch = await generate_batch(
-            sections,
-            payload.mode,
-            payload.format,
-            payload.count,
-            ai_client,
-            difficulty=payload.difficulty,
-            avoid_themes=avoid_themes,
-            language=language,
-        )
+        new_rows = []
+        if len(payload.section_ids) > 1:
+            # Generate separately per section so each bank row carries a single-
+            # section scope and can be attributed correctly in stats/balancing.
+            # Distribute payload.count evenly; first sections absorb the remainder.
+            section_map = {s.id: s for s in sections}
+            k = len(payload.section_ids)
+            base = payload.count // k
+            remainder = payload.count % k
 
-        new_rows = bank_rows_from_batch(
-            generated_batch, user_id, payload.mode, payload.format, payload.difficulty,
-            language, scope,
-        )
+            for i, sid in enumerate(payload.section_ids):
+                sec_count = base + (1 if i < remainder else 0)
+                if sec_count == 0:
+                    continue
+                sec_scope = scope_key([sid])
+                sec_matching = matching_bank_rows(
+                    db, user_id, payload.mode, payload.format,
+                    payload.difficulty, language, sec_scope,
+                )
+                avoid = [row.theme for row in sec_matching]
+                batch = await generate_batch(
+                    [section_map[sid]], payload.mode, payload.format, sec_count,
+                    ai_client, difficulty=payload.difficulty,
+                    avoid_themes=avoid, language=language,
+                )
+                new_rows += bank_rows_from_batch(
+                    batch, user_id, payload.mode, payload.format,
+                    payload.difficulty, language, sec_scope,
+                )
+        else:
+            scope = scope_key(payload.section_ids)
+            matching = matching_bank_rows(
+                db, user_id, payload.mode, payload.format, payload.difficulty, language, scope
+            )
+            avoid_themes = [row.theme for row in matching]
+            batch = await generate_batch(
+                sections, payload.mode, payload.format, payload.count,
+                ai_client, difficulty=payload.difficulty,
+                avoid_themes=avoid_themes, language=language,
+            )
+            new_rows = bank_rows_from_batch(
+                batch, user_id, payload.mode, payload.format,
+                payload.difficulty, language, scope,
+            )
+
         db.add_all(new_rows)
         db.commit()
         generation_jobs.complete_job(job_id, len(new_rows))

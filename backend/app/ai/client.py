@@ -66,7 +66,17 @@ class OpenRouterClient:
                 except httpx.HTTPError as exc:
                     raise AIClientError(f"OpenRouter request failed: {exc}") from exc
 
-                if response.status_code == 429 or response.status_code >= 500:
+                if response.status_code == 429:
+                    # Rate limit — read the body for the real reason, never retry
+                    # (the limit won't clear within a backoff window anyway).
+                    try:
+                        err_data = response.json()
+                        msg = err_data.get("error", {}).get("message") or response.text[:300]
+                    except Exception:
+                        msg = response.text[:300]
+                    raise AIClientError(f"OpenRouter rate limit exceeded: {msg}")
+
+                if response.status_code >= 500:
                     if attempt < self.max_retries:
                         await asyncio.sleep(self.backoff_base * (2**attempt))
                         continue
