@@ -25,6 +25,7 @@ function AppShell() {
   const { language, setLanguage, t } = useLanguage()
   const [view, setView] = useState(() => (getInitialActiveSessionId() ? 'training' : 'sections'))
   const [sessionId, setSessionId] = useState(getInitialActiveSessionId)
+  const [progressKey, setProgressKey] = useState(0)
 
   useEffect(() => {
     if (user?.language && user.language !== language) setLanguage(user.language)
@@ -81,8 +82,7 @@ function AppShell() {
       // "start a new session" form, which would otherwise silently abandon it.
       setView('training')
     } else {
-      // Just browsing another tab - leave any in-progress session intact so
-      // "Train" can resume it later. Only an explicit Interrupt/Finish ends it.
+      if (target === 'progress') setProgressKey((k) => k + 1)
       setView(target)
     }
   }
@@ -107,7 +107,7 @@ function AppShell() {
           {view === 'summary' && sessionId && (
             <SummaryScreen sessionId={sessionId} onDone={goToSections} onTrainAgain={goToTrainAgain} />
           )}
-          {view === 'progress' && <ProgressScreen onTrainSection={goToTrainForSection} />}
+          {view === 'progress' && <ProgressScreen key={progressKey} onTrainSection={goToTrainForSection} />}
           {view === 'settings' && <SettingsScreen />}
           {view === 'question-bank' && <QuestionBankScreen />}
         </div>

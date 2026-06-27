@@ -193,6 +193,7 @@ def start_session(
             current_user.language,
             scope,
             payload.section_ids,
+            payload.section_mode,
             ai_client,
             session_factory,
         )
@@ -258,25 +259,49 @@ async def next_question(
         sections = get_owned_sections(db, session.section_ids, current_user.id)
         avoid_themes = [row.theme for row in matching]
         try:
-            generated_batch = await generate_batch(
-                sections,
-                session.mode,
-                session.format,
-                settings.question_bank_batch_size,
-                ai_client,
-                difficulty=session.difficulty,
-                avoid_themes=avoid_themes,
-                language=current_user.language,
-            )
+            # For "or" multi-section sessions generate per section so every bank
+            # row carries a single-section scope and can be attributed correctly
+            # in stats.  For "and" sessions the combined scope is intentional.
+            if session.section_mode == "or" and len(sections) > 1:
+                section_map = {s.id: s for s in sections}
+                per_section_count = max(1, settings.question_bank_batch_size // len(sections))
+                new_rows = []
+                for sid in session.section_ids:
+                    sec_scope = scope_key([sid])
+                    sec_avoid = [row.theme for row in matching if set(row.section_ids) == {sid}]
+                    batch = await generate_batch(
+                        [section_map[sid]],
+                        session.mode,
+                        session.format,
+                        per_section_count,
+                        ai_client,
+                        difficulty=session.difficulty,
+                        avoid_themes=sec_avoid,
+                        language=current_user.language,
+                    )
+                    new_rows += bank_rows_from_batch(
+                        batch, current_user.id, session.mode, session.format, session.difficulty,
+                        current_user.language, sec_scope,
+                    )
+            else:
+                generated_batch = await generate_batch(
+                    sections,
+                    session.mode,
+                    session.format,
+                    settings.question_bank_batch_size,
+                    ai_client,
+                    difficulty=session.difficulty,
+                    avoid_themes=avoid_themes,
+                    language=current_user.language,
+                )
+                new_rows = bank_rows_from_batch(
+                    generated_batch, current_user.id, session.mode, session.format, session.difficulty,
+                    current_user.language, scope,
+                )
         except MissingApiKeyError as exc:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
         except AIClientError as exc:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
-
-        new_rows = bank_rows_from_batch(
-            generated_batch, current_user.id, session.mode, session.format, session.difficulty,
-            current_user.language, scope,
-        )
         db.add_all(new_rows)
         db.flush()
         matching = matching + new_rows
@@ -315,6 +340,7 @@ async def next_question(
             current_user.language,
             scope,
             session.section_ids,
+            session.section_mode,
             ai_client,
             session_factory,
         )
@@ -568,9 +594,9 @@ def get_stats(
     def _section_scores_for_group(grp: list[Attempt], session: TrainingSession) -> dict[int, float]:
         per_section: dict[int, list[int]] = defaultdict(list)
         for attempt in grp:
-            sec_ids = _attempt_sec_ids(attempt, session)
-            if len(sec_ids) == 1 and sec_ids[0] in section_names:
-                per_section[sec_ids[0]].append(attempt.score)
+            for sec_id in _attempt_sec_ids(attempt, session):
+                if sec_id in section_names:
+                    per_section[sec_id].append(attempt.score)
         return {
             sec_id: round(sum(scores) / len(scores), 1)
             for sec_id, scores in per_section.items()
@@ -594,9 +620,7 @@ def get_stats(
 
     topic_scores: dict[int, list[int]] = {}
     for attempt in attempts:
-        sec_ids = _attempt_sec_ids(attempt, session_by_id[attempt.session_id])
-        if len(sec_ids) == 1:
-            section_id = sec_ids[0]
+        for section_id in _attempt_sec_ids(attempt, session_by_id[attempt.session_id]):
             if section_id in section_names:
                 topic_scores.setdefault(section_id, []).append(attempt.score)
 

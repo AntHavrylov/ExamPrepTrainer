@@ -136,6 +136,7 @@ async def replenish_pool(
     language: str,
     scope: list[int],
     section_ids: list[int],
+    section_mode: str,
     avoid_themes: list[str],
     ai_client: AIProvider,
     session_factory,
@@ -154,17 +155,25 @@ async def replenish_pool(
     db = session_factory()
     try:
         sections = get_owned_sections(db, section_ids, user_id)
-        generated_batch = await generate_batch(
-            sections,
-            mode,
-            format_,
-            settings.background_question_batch_size,
-            ai_client,
-            difficulty=difficulty,
-            avoid_themes=avoid_themes,
-            language=language,
-        )
-        new_rows = bank_rows_from_batch(generated_batch, user_id, mode, format_, difficulty, language, scope)
+        # For "or" multi-section sessions generate per section so every bank row
+        # carries a single-section scope and can be attributed in stats.
+        if section_mode == "or" and len(sections) > 1:
+            section_map = {s.id: s for s in sections}
+            per_section_count = max(1, settings.background_question_batch_size // len(sections))
+            new_rows = []
+            for sid in section_ids:
+                sec_scope = scope_key([sid])
+                batch = await generate_batch(
+                    [section_map[sid]], mode, format_, per_section_count, ai_client,
+                    difficulty=difficulty, avoid_themes=avoid_themes, language=language,
+                )
+                new_rows += bank_rows_from_batch(batch, user_id, mode, format_, difficulty, language, sec_scope)
+        else:
+            generated_batch = await generate_batch(
+                sections, mode, format_, settings.background_question_batch_size, ai_client,
+                difficulty=difficulty, avoid_themes=avoid_themes, language=language,
+            )
+            new_rows = bank_rows_from_batch(generated_batch, user_id, mode, format_, difficulty, language, scope)
         db.add_all(new_rows)
         db.commit()
     except (AIClientError, MissingApiKeyError, HTTPException):
@@ -185,6 +194,7 @@ def schedule_replenish_if_low(
     language: str,
     scope: list[int],
     section_ids: list[int],
+    section_mode: str,
     ai_client: AIProvider,
     session_factory,
 ) -> None:
@@ -205,6 +215,7 @@ def schedule_replenish_if_low(
         language,
         scope,
         section_ids,
+        section_mode,
         avoid_themes,
         ai_client,
         session_factory,
