@@ -724,6 +724,7 @@ def get_stats(
                 created_at=session_by_id[sid].started_at,
                 score=round(sum(a.score for a in grp) / len(grp), 1),
                 section_scores=_section_scores_for_group(grp, session_by_id[sid]),
+                attempt_count=len(grp),
             )
             for sid, grp in session_groups.items()
             if sid in session_by_id

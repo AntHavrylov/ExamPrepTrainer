@@ -4,6 +4,15 @@ import { useLanguage } from '../context/LanguageContext'
 
 const LETTERS = ['A', 'B', 'C', 'D']
 
+function fisherYatesShuffle(n) {
+  const indices = Array.from({ length: n }, (_, i) => i)
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[indices[i], indices[j]] = [indices[j], indices[i]]
+  }
+  return indices
+}
+
 export default function TrainingScreen({ sessionId, onFinish, onInterrupt }) {
   const { t } = useLanguage()
   const [question, setQuestion] = useState(null)
@@ -15,6 +24,8 @@ export default function TrainingScreen({ sessionId, onFinish, onInterrupt }) {
   const [error, setError] = useState(null)
   const [showHint, setShowHint] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(null)
+  // shuffleMap[shuffledIdx] = originalIdx; null for open-ended questions
+  const [shuffleMap, setShuffleMap] = useState(null)
 
   const isQuiz = Boolean(question?.options)
 
@@ -160,8 +171,10 @@ export default function TrainingScreen({ sessionId, onFinish, onInterrupt }) {
       if (!question) return
 
       if (!result && isQuiz && !loading && !isTyping && /^[1-4]$/.test(e.key)) {
-        const idx = Number(e.key) - 1
-        if (idx < question.options.length) submitQuizChoice(idx)
+        const shuffledIdx = Number(e.key) - 1
+        if (shuffledIdx < question.options.length) {
+          submitQuizChoice(shuffleMap ? shuffleMap[shuffledIdx] : shuffledIdx)
+        }
         return
       }
 
@@ -184,7 +197,12 @@ export default function TrainingScreen({ sessionId, onFinish, onInterrupt }) {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [question, result, loading, isQuiz, answerText])
+  }, [question, result, loading, isQuiz, answerText, shuffleMap])
+
+  useEffect(() => {
+    if (!question?.options?.length) { setShuffleMap(null); return }
+    setShuffleMap(fisherYatesShuffle(question.options.length))
+  }, [question?.attempt_id])
 
   const progressPct = question
     ? Math.round((question.question_number / question.total_questions) * 100)
@@ -258,23 +276,24 @@ export default function TrainingScreen({ sessionId, onFinish, onInterrupt }) {
 
         {isQuiz && (
           <div className="quiz-options">
-            {question.options.map((opt, idx) => {
+            {(shuffleMap ?? question.options.map((_, i) => i)).map((origIdx, shuffledIdx) => {
+              const opt = question.options[origIdx]
               let variant = ''
               if (result) {
-                if (idx === result.correct_index) variant = ' correct'
-                else if (idx === selectedIndex) variant = ' incorrect'
+                if (origIdx === result.correct_index) variant = ' correct'
+                else if (origIdx === selectedIndex) variant = ' incorrect'
                 else variant = ' dimmed'
-              } else if (selectedIndex === idx && loading) {
+              } else if (origIdx === selectedIndex && loading) {
                 variant = ' selected'
               }
               return (
                 <button
-                  key={idx}
+                  key={shuffledIdx}
                   className={`quiz-option-btn${variant}`}
-                  onClick={() => submitQuizChoice(idx)}
+                  onClick={() => submitQuizChoice(origIdx)}
                   disabled={Boolean(result) || loading}
                 >
-                  <span className="quiz-option-badge">{LETTERS[idx] || idx + 1}</span>
+                  <span className="quiz-option-badge">{LETTERS[shuffledIdx] || shuffledIdx + 1}</span>
                   {opt}
                 </button>
               )

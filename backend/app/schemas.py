@@ -184,6 +184,7 @@ class ScorePoint(BaseModel):
     created_at: datetime
     score: float
     section_scores: dict[int, float] = {}  # section_id -> avg score for this session
+    attempt_count: int = 0  # number of scored questions in this session
 
 
 class TopicStat(BaseModel):

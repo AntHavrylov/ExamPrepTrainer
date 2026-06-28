@@ -93,34 +93,59 @@ async def _run_generation(
     ai_client: AIProvider,
 ) -> None:
     generation_jobs.mark_running(job_id)
+
+    # Phase 1: read all needed data, then release the DB connection.
+    # AI calls below can take 10-60 s; holding a connection that long starves the
+    # pool and blocks other requests on the single-threaded event loop.
     db = session_factory()
     try:
-        sections = get_owned_sections(db, payload.section_ids, user_id)
+        try:
+            sections = get_owned_sections(db, payload.section_ids, user_id)
+        except HTTPException as exc:
+            generation_jobs.fail_job(job_id, exc.detail if isinstance(exc.detail, str) else str(exc.detail))
+            return
 
-        new_rows = []
+        # Eagerly load the lazy `documents` relationship so Section objects
+        # remain fully usable after the session is closed.
+        for s in sections:
+            list(s.documents)
+
         if len(payload.section_ids) > 1:
-            # Generate separately per section so each bank row carries a single-
-            # section scope and can be attributed correctly in stats/balancing.
-            # Distribute payload.count evenly; first sections absorb the remainder.
             section_map = {s.id: s for s in sections}
             k = len(payload.section_ids)
-            base = payload.count // k
-            remainder = payload.count % k
-
+            base, remainder = payload.count // k, payload.count % k
+            per_section_plan: list[tuple] = []
             for i, sid in enumerate(payload.section_ids):
                 sec_count = base + (1 if i < remainder else 0)
                 if sec_count == 0:
                     continue
-                if i > 0:
-                    await asyncio.sleep(1)
                 sec_scope = scope_key([sid])
                 sec_matching = matching_bank_rows(
                     db, user_id, payload.mode, payload.format,
                     payload.difficulty, language, sec_scope,
                 )
                 avoid = [row.theme for row in sec_matching]
+                per_section_plan.append((i, [section_map[sid]], sec_count, sec_scope, avoid))
+        else:
+            scope = scope_key(payload.section_ids)
+            matching = matching_bank_rows(
+                db, user_id, payload.mode, payload.format, payload.difficulty, language, scope,
+            )
+            avoid_themes = [row.theme for row in matching]
+
+        db.expunge_all()  # detach ORM objects so they survive session close
+    finally:
+        db.close()  # release connection before the long AI calls
+
+    # Phase 2: AI generation — no DB connection held during these calls.
+    try:
+        new_rows = []
+        if len(payload.section_ids) > 1:
+            for i, secs, sec_count, sec_scope, avoid in per_section_plan:
+                if i > 0:
+                    await asyncio.sleep(1)
                 batch = await generate_batch(
-                    [section_map[sid]], payload.mode, payload.format, sec_count,
+                    secs, payload.mode, payload.format, sec_count,
                     ai_client, difficulty=payload.difficulty,
                     avoid_themes=avoid, language=language,
                 )
@@ -129,11 +154,6 @@ async def _run_generation(
                     payload.difficulty, language, sec_scope,
                 )
         else:
-            scope = scope_key(payload.section_ids)
-            matching = matching_bank_rows(
-                db, user_id, payload.mode, payload.format, payload.difficulty, language, scope
-            )
-            avoid_themes = [row.theme for row in matching]
             batch = await generate_batch(
                 sections, payload.mode, payload.format, payload.count,
                 ai_client, difficulty=payload.difficulty,
@@ -143,19 +163,27 @@ async def _run_generation(
                 batch, user_id, payload.mode, payload.format,
                 payload.difficulty, language, scope,
             )
+    except HTTPException as exc:
+        generation_jobs.fail_job(job_id, exc.detail if isinstance(exc.detail, str) else str(exc.detail))
+        return
+    except MissingApiKeyError as exc:
+        generation_jobs.fail_job(job_id, str(exc))
+        return
+    except AIClientError as exc:
+        generation_jobs.fail_job(job_id, str(exc))
+        return
+    except Exception as exc:
+        generation_jobs.fail_job(job_id, f"Unexpected error: {exc}")
+        return
 
+    # Phase 3: persist — fresh connection just for the write.
+    db = session_factory()
+    try:
         db.add_all(new_rows)
         db.commit()
         generation_jobs.complete_job(job_id, len(new_rows))
-
-    except HTTPException as exc:
-        generation_jobs.fail_job(job_id, exc.detail if isinstance(exc.detail, str) else str(exc.detail))
-    except MissingApiKeyError as exc:
-        generation_jobs.fail_job(job_id, str(exc))
-    except AIClientError as exc:
-        generation_jobs.fail_job(job_id, str(exc))
     except Exception as exc:
-        generation_jobs.fail_job(job_id, f"Unexpected error: {exc}")
+        generation_jobs.fail_job(job_id, f"Unexpected error saving questions: {exc}")
     finally:
         db.close()
 

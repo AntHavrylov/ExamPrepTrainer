@@ -197,19 +197,21 @@ export default function ProgressScreen({ onTrainSection }) {
     })
   }
 
-  // Weekly activity: count sessions per day for the past 7 days
+  // Weekly activity: sum questions answered per day for the past 7 days
   const now = new Date()
   const weekActivity = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(now)
     d.setDate(now.getDate() - (6 - i))
-    const count = history.filter((p) => {
-      const pd = new Date(p.created_at)
-      return (
-        pd.getFullYear() === d.getFullYear() &&
-        pd.getMonth() === d.getMonth() &&
-        pd.getDate() === d.getDate()
-      )
-    }).length
+    const count = history
+      .filter((p) => {
+        const pd = new Date(p.created_at)
+        return (
+          pd.getFullYear() === d.getFullYear() &&
+          pd.getMonth() === d.getMonth() &&
+          pd.getDate() === d.getDate()
+        )
+      })
+      .reduce((sum, p) => sum + (p.attempt_count ?? 1), 0)
     return { day: DAYS[d.getDay()], count, isToday: i === 6 }
   })
   const maxWeekCount = Math.max(...weekActivity.map((d) => d.count), 1)

@@ -154,36 +154,59 @@ async def replenish_pool(
     except HTTPException:
         return
 
-    db = session_factory()
     try:
-        sections = get_owned_sections(db, section_ids, user_id)
-        # For "or" multi-section sessions generate per section so every bank row
-        # carries a single-section scope and can be attributed in stats.
-        if section_mode == "or" and len(sections) > 1:
-            section_map = {s.id: s for s in sections}
-            per_section_count = max(1, settings.background_question_batch_size // len(sections))
+        # Phase 1: read section data, then release the DB connection before AI calls.
+        db = session_factory()
+        try:
+            sections = get_owned_sections(db, section_ids, user_id)
+            # Eagerly load documents so detached Section objects work after close.
+            for s in sections:
+                list(s.documents)
+            if section_mode == "or" and len(sections) > 1:
+                section_map = {s.id: s for s in sections}
+                per_section_count = max(1, settings.background_question_batch_size // len(sections))
+                per_section_plan = [
+                    (i, [section_map[sid]], scope_key([sid]))
+                    for i, sid in enumerate(section_ids)
+                    if sid in section_map
+                ]
+            db.expunge_all()
+        except (AIClientError, MissingApiKeyError, HTTPException):
+            return
+        finally:
+            db.close()  # release before AI generation
+
+        # Phase 2: AI generation — no DB connection held.
+        try:
             new_rows = []
-            for i, sid in enumerate(section_ids):
-                if i > 0:
-                    await asyncio.sleep(1)
-                sec_scope = scope_key([sid])
-                batch = await generate_batch(
-                    [section_map[sid]], mode, format_, per_section_count, ai_client,
+            if section_mode == "or" and len(sections) > 1:
+                for i, secs, sec_scope in per_section_plan:
+                    if i > 0:
+                        await asyncio.sleep(1)
+                    batch = await generate_batch(
+                        secs, mode, format_, per_section_count, ai_client,
+                        difficulty=difficulty, avoid_themes=avoid_themes, language=language,
+                    )
+                    new_rows += bank_rows_from_batch(batch, user_id, mode, format_, difficulty, language, sec_scope)
+            else:
+                generated_batch = await generate_batch(
+                    sections, mode, format_, settings.background_question_batch_size, ai_client,
                     difficulty=difficulty, avoid_themes=avoid_themes, language=language,
                 )
-                new_rows += bank_rows_from_batch(batch, user_id, mode, format_, difficulty, language, sec_scope)
-        else:
-            generated_batch = await generate_batch(
-                sections, mode, format_, settings.background_question_batch_size, ai_client,
-                difficulty=difficulty, avoid_themes=avoid_themes, language=language,
-            )
-            new_rows = bank_rows_from_batch(generated_batch, user_id, mode, format_, difficulty, language, scope)
-        db.add_all(new_rows)
-        db.commit()
-    except (AIClientError, MissingApiKeyError, HTTPException):
-        pass  # Best effort - the next live request just falls back to generating synchronously.
+                new_rows = bank_rows_from_batch(generated_batch, user_id, mode, format_, difficulty, language, scope)
+        except (AIClientError, MissingApiKeyError, HTTPException):
+            return
+
+        # Phase 3: persist — fresh connection just for the write.
+        db = session_factory()
+        try:
+            db.add_all(new_rows)
+            db.commit()
+        except Exception:
+            pass  # best-effort; next live request falls back to generating synchronously
+        finally:
+            db.close()
     finally:
-        db.close()
         _replenishing.discard(key)
 
 
