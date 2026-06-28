@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import './App.css'
 import Sidebar from './components/Sidebar'
+import TweaksPanel from './components/TweaksPanel'
 import { ACTIVE_SESSION_KEY } from './api'
 import { LAST_TRAINING_SETTINGS_KEY, PRE_SELECT_SECTIONS_KEY } from './constants'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { LanguageProvider, useLanguage } from './context/LanguageContext'
 import { useTheme } from './hooks/useTheme'
+import { useTweaks } from './hooks/useTweaks'
 import LoginScreen from './screens/LoginScreen'
 import SectionsScreen from './screens/SectionsScreen'
 import StartTrainingScreen from './screens/StartTrainingScreen'
@@ -32,7 +34,7 @@ const VIEW_META = {
 
 function IconSun() {
   return (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="4" />
       <path d="M12 2v2M12 20v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2 12h2M20 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" />
     </svg>
@@ -41,13 +43,14 @@ function IconSun() {
 
 function IconMoon() {
   return (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z" />
     </svg>
   )
 }
 
-function AppHeader({ view, theme, onToggleTheme }) {
+
+function AppHeader({ view, theme, tweaksOpen, onToggleTweaks }) {
   const [title, subtitle] = VIEW_META[view] || ['', '']
   return (
     <header className="app-header">
@@ -58,10 +61,11 @@ function AppHeader({ view, theme, onToggleTheme }) {
       <div className="app-header-actions">
         <button
           type="button"
-          className="app-header-theme-btn"
-          onClick={onToggleTheme}
-          aria-label="Toggle theme"
-          title="Toggle theme"
+          data-tweaks-trigger
+          className={`app-header-theme-btn${tweaksOpen ? ' active' : ''}`}
+          onClick={onToggleTweaks}
+          aria-label="Theme & tweaks"
+          title="Theme & tweaks"
         >
           {theme === 'dark' ? <IconSun /> : <IconMoon />}
         </button>
@@ -73,14 +77,12 @@ function AppHeader({ view, theme, onToggleTheme }) {
 function AppShell() {
   const { token, user, authLoading, logout } = useAuth()
   const { language, setLanguage, t } = useLanguage()
-  const { theme, toggleTheme } = useTheme()
+  const { theme, startTheme, setStartTheme } = useTheme()
+  const { accent, setAccent, depth, setDepth, reset: resetTweaks } = useTweaks()
   const [view, setView] = useState(() => (getInitialActiveSessionId() ? 'training' : 'sections'))
   const [sessionId, setSessionId] = useState(getInitialActiveSessionId)
   const [progressKey, setProgressKey] = useState(0)
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-accent', 'violet')
-  }, [])
+  const [tweaksOpen, setTweaksOpen] = useState(false)
 
   useEffect(() => {
     if (user?.language && user.language !== language) setLanguage(user.language)
@@ -145,7 +147,12 @@ function AppShell() {
     <div className="app-shell">
       <Sidebar activeNav={activeNav} onNavigate={navigate} user={user} onLogout={logout} />
       <div className="app-body">
-        <AppHeader view={view} theme={theme} onToggleTheme={toggleTheme} />
+        <AppHeader
+          view={view}
+          theme={theme}
+          tweaksOpen={tweaksOpen}
+          onToggleTweaks={() => setTweaksOpen((v) => !v)}
+        />
         <main className="app-main">
           <div className="app-content">
             {view === 'sections' && <SectionsScreen />}
@@ -164,6 +171,18 @@ function AppShell() {
           </div>
         </main>
       </div>
+
+      <TweaksPanel
+        open={tweaksOpen}
+        onClose={() => setTweaksOpen(false)}
+        accent={accent}
+        setAccent={setAccent}
+        depth={depth}
+        setDepth={setDepth}
+        startTheme={startTheme}
+        setStartTheme={setStartTheme}
+        onReset={() => { resetTweaks(); setStartTheme('auto') }}
+      />
     </div>
   )
 }
