@@ -73,6 +73,34 @@ function CustomTooltip({ active, payload, label }) {
 }
 
 const HISTORY_LIMIT_OPTIONS = [5, 10, 20, 50, 0]
+const RING_R = 70
+const RING_CIRC = 2 * Math.PI * RING_R
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+function RingGauge({ pct }) {
+  const dash = (pct / 100) * RING_CIRC
+  const gap = RING_CIRC - dash
+  return (
+    <div className="ring-wrap">
+      <svg className="ring-svg" width="172" height="172" viewBox="0 0 172 172">
+        <circle cx="86" cy="86" r={RING_R} fill="none" stroke="var(--track)" strokeWidth="12" />
+        <circle
+          cx="86" cy="86" r={RING_R}
+          fill="none"
+          stroke="var(--accent)"
+          strokeWidth="12"
+          strokeDasharray={`${dash} ${gap}`}
+          strokeLinecap="round"
+          style={{ transition: 'stroke-dasharray 0.8s ease' }}
+        />
+      </svg>
+      <div className="ring-center">
+        <span className="ring-value">{Math.round(pct)}</span>
+        <span className="ring-unit">%</span>
+      </div>
+    </div>
+  )
+}
 
 export default function ProgressScreen({ onTrainSection }) {
   const { t } = useLanguage()
@@ -99,16 +127,13 @@ export default function ProgressScreen({ onTrainSection }) {
 
   if (error)
     return (
-      <p className="error" role="alert">
-        {error}
-      </p>
+      <p className="error" role="alert">{error}</p>
     )
   if (!stats) return <p>{t('progress.loading')}</p>
 
   if (stats.total_attempts === 0) {
     return (
       <div className="progress-screen">
-        <h2>{t('progress.title')}</h2>
         <p>{t('progress.empty')}</p>
       </div>
     )
@@ -122,19 +147,14 @@ export default function ProgressScreen({ onTrainSection }) {
   const firstDate = new Date(history[0].created_at).toLocaleDateString()
   const lastDate = new Date(history[history.length - 1].created_at).toLocaleDateString()
 
-  // section_names keys are strings from JSON; sort for stable color assignment
   const sectionIds = Object.keys(stats.section_names).sort()
-
   const limit = historyLimit > 0 ? -historyLimit : undefined
 
-  // Overall series: one point per global session, trimmed to limit.
   const overallSeries = history.slice(limit).map(point => ({
     score: point.score,
     date: new Date(point.created_at).toLocaleDateString(),
   }))
 
-  // Per-section series: only sessions where that section had attributable scores,
-  // each independently trimmed to the same limit.
   const sectionSeries = {}
   sectionIds.forEach((id) => {
     sectionSeries[id] = history
@@ -146,8 +166,6 @@ export default function ProgressScreen({ onTrainSection }) {
       }))
   })
 
-  // Right-align: all series share the same rightmost position (their latest
-  // session). Shorter histories start later on the X axis.
   const maxLen = Math.max(
     overallSeries.length,
     ...Object.values(sectionSeries).map(s => s.length),
@@ -156,12 +174,10 @@ export default function ProgressScreen({ onTrainSection }) {
 
   const chartData = Array.from({ length: maxLen }, (_, i) => {
     const entry = { x: i + 1 }
-
     const overallOffset = maxLen - overallSeries.length
     const oi = i - overallOffset
     entry.overall = oi >= 0 ? overallSeries[oi].score * 10 : null
     entry.overall_date = oi >= 0 ? overallSeries[oi].date : null
-
     sectionIds.forEach((id) => {
       const series = sectionSeries[id]
       const offset = maxLen - series.length
@@ -169,7 +185,6 @@ export default function ProgressScreen({ onTrainSection }) {
       entry[`s${id}`] = si >= 0 ? series[si].score * 10 : null
       entry[`s${id}_date`] = si >= 0 ? series[si].date : null
     })
-
     return entry
   })
 
@@ -182,14 +197,32 @@ export default function ProgressScreen({ onTrainSection }) {
     })
   }
 
+  // Weekly activity: count sessions per day for the past 7 days
+  const now = new Date()
+  const weekActivity = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(now)
+    d.setDate(now.getDate() - (6 - i))
+    const count = history.filter((p) => {
+      const pd = new Date(p.created_at)
+      return (
+        pd.getFullYear() === d.getFullYear() &&
+        pd.getMonth() === d.getMonth() &&
+        pd.getDate() === d.getDate()
+      )
+    }).length
+    return { day: DAYS[d.getDay()], count, isToday: i === 6 }
+  })
+  const maxWeekCount = Math.max(...weekActivity.map((d) => d.count), 1)
+
+  // Ring gauge: average score as % (0–100)
+  const avgPct = stats.average_score * 10
+
   return (
     <div className="progress-screen">
-      <h2>{t('progress.title')}</h2>
-
       <div className="stat-card-grid">
         <div className="stat-card">
           <span className="stat-card-label">{t('progress.statAverage')}</span>
-          <span className="stat-card-value">{stats.average_score.toFixed(1)} / 10</span>
+          <span className="stat-card-value">{stats.average_score.toFixed(1)}<span style={{ fontSize: '16px', fontWeight: 600 }}> / 10</span></span>
           <Sparkline scores={scores} />
         </div>
 
@@ -201,141 +234,175 @@ export default function ProgressScreen({ onTrainSection }) {
 
         <div className="stat-card">
           <span className="stat-card-label">{t('progress.statLatest')}</span>
-          <span className="stat-card-value">{latest.toFixed(1)} / 10</span>
+          <span className="stat-card-value">{latest.toFixed(1)}<span style={{ fontSize: '16px', fontWeight: 600 }}> / 10</span></span>
           <span className={`stat-card-sub trend-${trend}`}>{t(TREND_KEYS[trend])}</span>
         </div>
 
         {weakest && (
           <div className="stat-card">
             <span className="stat-card-label">{t('progress.statWeakest')}</span>
-            <span className="stat-card-value">{weakest.average_score.toFixed(1)} / 10</span>
+            <span className="stat-card-value">{weakest.average_score.toFixed(1)}<span style={{ fontSize: '16px', fontWeight: 600 }}> / 10</span></span>
             <span className="stat-card-sub">{weakest.section_name}</span>
           </div>
         )}
       </div>
 
-      <div className="chart-header">
-        <h3>{t('progress.scoreHistory')}</h3>
-        <label className="history-limit-label">
-          {t('progress.historyLimit')}
-          <select value={historyLimit} onChange={handleHistoryLimitChange} className="history-limit-select">
-            {HISTORY_LIMIT_OPTIONS.map(n => (
-              <option key={n} value={n}>
-                {n === 0 ? t('progress.historyAll') : t('progress.historyLast', { n })}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <p className="chart-caption">{t('progress.chartCaption')}</p>
-
-      <div className="chart-toggles">
-        <button
-          type="button"
-          className={`chart-toggle${hiddenLines.has('overall') ? ' off' : ''}`}
-          style={{ '--toggle-color': OVERALL_COLOR }}
-          onClick={() => toggleLine('overall')}
-        >
-          {t('progress.overall')}
-        </button>
-        {sectionIds
-          .filter(id => sectionSeries[id].length > 0)
-          .map((id, idx) => {
-            const key = `s${id}`
-            return (
-              <button
-                key={id}
-                type="button"
-                className={`chart-toggle${hiddenLines.has(key) ? ' off' : ''}`}
-                style={{ '--toggle-color': SECTION_COLORS[idx % SECTION_COLORS.length] }}
-                onClick={() => toggleLine(key)}
-              >
-                {stats.section_names[id]}
-              </button>
-            )
-          })}
-      </div>
-
-      <div className="recharts-wrap">
-        <ResponsiveContainer width="100%" height={220}>
-          <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-            <XAxis dataKey="x" tick={{ fontSize: 11, fill: '#94a3b8' }} />
-            <YAxis
-              domain={[0, 100]}
-              tickFormatter={v => `${v}%`}
-              tick={{ fontSize: 11, fill: '#94a3b8' }}
-              width={36}
-            />
-            <Tooltip content={<CustomTooltip />} />
-            <ReferenceLine
-              y={stats.average_score * 10}
-              stroke={OVERALL_COLOR}
-              strokeDasharray="4 2"
-              strokeOpacity={0.5}
-              label={{ value: `${(stats.average_score * 10).toFixed(0)}%`, fill: '#94a3b8', fontSize: 10 }}
-            />
-            {!hiddenLines.has('overall') && (
-              <Line
-                type="monotone"
-                dataKey="overall"
-                name={t('progress.overall')}
-                stroke={OVERALL_COLOR}
-                strokeWidth={2}
-                dot={{ r: 3, fill: OVERALL_COLOR }}
-                activeDot={{ r: 5 }}
-                connectNulls={false}
-              />
-            )}
-            {sectionIds
-              .filter(id => sectionSeries[id].length > 0)
-              .map((id, idx) => {
-                const key = `s${id}`
-                if (hiddenLines.has(key)) return null
-                const color = SECTION_COLORS[idx % SECTION_COLORS.length]
-                return (
-                  <Line
-                    key={key}
-                    type="monotone"
-                    dataKey={key}
-                    name={stats.section_names[id]}
-                    stroke={color}
-                    strokeWidth={1.5}
-                    dot={{ r: 2.5, fill: color }}
-                    activeDot={{ r: 4 }}
-                    connectNulls={false}
+      <div className="progress-grid">
+        <div className="progress-panel">
+          <h3>Weekly Activity</h3>
+          <div className="weekly-chart">
+            {weekActivity.map(({ day, count, isToday }) => {
+              const barH = Math.max((count / maxWeekCount) * 130, count > 0 ? 16 : 0)
+              return (
+                <div key={day} className="weekly-bar-col">
+                  {count > 0 && <span className="weekly-bar-val">{count}</span>}
+                  <div
+                    className={`weekly-bar ${isToday ? 'active' : 'inactive'}`}
+                    style={{ height: barH || 8, opacity: count === 0 ? 0.35 : 1 }}
                   />
-                )
-              })}
-          </LineChart>
-        </ResponsiveContainer>
+                  <span className="weekly-bar-day" style={{ fontWeight: isToday ? 700 : 500, color: isToday ? 'var(--accent)' : undefined }}>
+                    {day}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="progress-panel ring-panel">
+          <h3>Avg Score</h3>
+          <RingGauge pct={avgPct} />
+          <span className="ring-badge">
+            {trend === 'up' ? '↑ Improving' : trend === 'down' ? '↓ Declining' : '→ Stable'}
+          </span>
+        </div>
       </div>
 
-      <div className="progress-section">
+      <div className="progress-panel" style={{ marginBottom: 16 }}>
+        <div className="chart-header">
+          <h3>{t('progress.scoreHistory')}</h3>
+          <label className="history-limit-label">
+            {t('progress.historyLimit')}
+            <select value={historyLimit} onChange={handleHistoryLimitChange} className="history-limit-select">
+              {HISTORY_LIMIT_OPTIONS.map(n => (
+                <option key={n} value={n}>
+                  {n === 0 ? t('progress.historyAll') : t('progress.historyLast', { n })}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <p className="chart-caption">{t('progress.chartCaption')}</p>
+
+        <div className="chart-toggles">
+          <button
+            type="button"
+            className={`chart-toggle${hiddenLines.has('overall') ? ' off' : ''}`}
+            style={{ '--toggle-color': OVERALL_COLOR }}
+            onClick={() => toggleLine('overall')}
+          >
+            {t('progress.overall')}
+          </button>
+          {sectionIds
+            .filter(id => sectionSeries[id].length > 0)
+            .map((id, idx) => {
+              const key = `s${id}`
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  className={`chart-toggle${hiddenLines.has(key) ? ' off' : ''}`}
+                  style={{ '--toggle-color': SECTION_COLORS[idx % SECTION_COLORS.length] }}
+                  onClick={() => toggleLine(key)}
+                >
+                  {stats.section_names[id]}
+                </button>
+              )
+            })}
+        </div>
+
+        <div className="recharts-wrap">
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+              <XAxis dataKey="x" tick={{ fontSize: 11, fill: '#94a3b8' }} />
+              <YAxis
+                domain={[0, 100]}
+                tickFormatter={v => `${v}%`}
+                tick={{ fontSize: 11, fill: '#94a3b8' }}
+                width={36}
+              />
+              <Tooltip content={<CustomTooltip />} />
+              <ReferenceLine
+                y={stats.average_score * 10}
+                stroke={OVERALL_COLOR}
+                strokeDasharray="4 2"
+                strokeOpacity={0.5}
+                label={{ value: `${(stats.average_score * 10).toFixed(0)}%`, fill: '#94a3b8', fontSize: 10 }}
+              />
+              {!hiddenLines.has('overall') && (
+                <Line
+                  type="monotone"
+                  dataKey="overall"
+                  name={t('progress.overall')}
+                  stroke={OVERALL_COLOR}
+                  strokeWidth={2}
+                  dot={{ r: 3, fill: OVERALL_COLOR }}
+                  activeDot={{ r: 5 }}
+                  connectNulls={false}
+                />
+              )}
+              {sectionIds
+                .filter(id => sectionSeries[id].length > 0)
+                .map((id, idx) => {
+                  const key = `s${id}`
+                  if (hiddenLines.has(key)) return null
+                  const color = SECTION_COLORS[idx % SECTION_COLORS.length]
+                  return (
+                    <Line
+                      key={key}
+                      type="monotone"
+                      dataKey={key}
+                      name={stats.section_names[id]}
+                      stroke={color}
+                      strokeWidth={1.5}
+                      dot={{ r: 2.5, fill: color }}
+                      activeDot={{ r: 4 }}
+                      connectNulls={false}
+                    />
+                  )
+                })}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      <div className="progress-panel">
         <h3>{t('progress.weakestTopics')}</h3>
-        <ul className="topic-list">
+        <div className="topic-mastery-list">
           {stats.weakest_topics.map((topic, i) => (
-            <li key={topic.section_id} className="topic-row">
+            <div key={topic.section_id} className="topic-mastery-row">
               <span className="topic-rank">{i + 1}</span>
-              <span className="topic-info">
-                <span className="topic-name">{topic.section_name}</span>
-                <span className="topic-meta">
-                  {topic.attempt_count} {t(topic.attempt_count === 1 ? 'progress.answerSingular' : 'progress.answerPlural')}
-                </span>
-              </span>
-              <span className="topic-score">{topic.average_score.toFixed(1)} / 10</span>
+              <span className="topic-name-col" title={topic.section_name}>{topic.section_name}</span>
+              <div className="topic-bar-wrap">
+                <div
+                  className="topic-bar-fill"
+                  style={{ width: `${Math.min(topic.average_score * 10, 100)}%` }}
+                />
+              </div>
+              <span className="topic-pct">{(topic.average_score * 10).toFixed(0)}%</span>
               {onTrainSection && (
                 <button
                   type="button"
-                  className="btn-link topic-train-btn"
+                  className="topic-train-btn"
                   onClick={() => onTrainSection(topic.section_id)}
                 >
                   {t('progress.trainTopic')}
                 </button>
               )}
-            </li>
+            </div>
           ))}
-        </ul>
+        </div>
       </div>
     </div>
   )

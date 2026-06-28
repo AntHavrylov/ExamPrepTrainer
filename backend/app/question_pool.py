@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DBSession
@@ -161,7 +163,9 @@ async def replenish_pool(
             section_map = {s.id: s for s in sections}
             per_section_count = max(1, settings.background_question_batch_size // len(sections))
             new_rows = []
-            for sid in section_ids:
+            for i, sid in enumerate(section_ids):
+                if i > 0:
+                    await asyncio.sleep(1)
                 sec_scope = scope_key([sid])
                 batch = await generate_batch(
                     [section_map[sid]], mode, format_, per_section_count, ai_client,

@@ -36,9 +36,28 @@ export default function SummaryScreen({ sessionId, onDone, onTrainAgain }) {
   const answered = summary.attempts.filter((a) => a.score !== null)
   const isQuiz = summary.format === 'quiz'
 
+  const trainAgainParams = {
+    selectedIds: summary.section_ids,
+    mode: summary.mode,
+    format: summary.format,
+    difficulty: summary.difficulty,
+    count: summary.target_question_count,
+    sectionMode: summary.section_mode,
+  }
+
   return (
     <div className="summary-screen">
       <h2>{t('summary.title')}</h2>
+
+      <div className="summary-actions">
+        {onTrainAgain && (
+          <button className="btn-secondary" onClick={() => onTrainAgain(trainAgainParams)}>
+            {t('summary.trainAgain')}
+          </button>
+        )}
+        <button onClick={onDone}>{t('summary.back')}</button>
+      </div>
+
       <div className="session-summary-card">
         <p>
           {t('summary.modeFormat', {
@@ -92,17 +111,7 @@ export default function SummaryScreen({ sessionId, onDone, onTrainAgain }) {
 
       <div className="summary-actions">
         {onTrainAgain && (
-          <button
-            className="btn-secondary"
-            onClick={() =>
-              onTrainAgain({
-                selectedIds: summary.section_ids,
-                mode: summary.mode,
-                format: summary.format,
-                difficulty: summary.difficulty,
-              })
-            }
-          >
+          <button className="btn-secondary" onClick={() => onTrainAgain(trainAgainParams)}>
             {t('summary.trainAgain')}
           </button>
         )}

@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -110,6 +111,8 @@ async def _run_generation(
                 sec_count = base + (1 if i < remainder else 0)
                 if sec_count == 0:
                     continue
+                if i > 0:
+                    await asyncio.sleep(1)
                 sec_scope = scope_key([sid])
                 sec_matching = matching_bank_rows(
                     db, user_id, payload.mode, payload.format,

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { useLanguage } from '../context/LanguageContext'
 import { LANGUAGE_NATIVE_NAMES, SUPPORTED_LANGUAGES } from '../i18n/translations'
@@ -20,6 +20,30 @@ const DIFFICULTY_KEYS = {
   easy: 'enums.difficultyEasy',
   medium: 'enums.difficultyMedium',
   hard: 'enums.difficultyHard',
+}
+
+function FilterPills({ label, value, onChange, options }) {
+  return (
+    <div className="filter-pills">
+      <button
+        type="button"
+        className={`filter-pill${value === '' ? ' active' : ''}`}
+        onClick={() => onChange('')}
+      >
+        All
+      </button>
+      {options.map(({ val, label: lbl }) => (
+        <button
+          key={val}
+          type="button"
+          className={`filter-pill${value === val ? ' active' : ''}`}
+          onClick={() => onChange(val === value ? '' : val)}
+        >
+          {lbl}
+        </button>
+      ))}
+    </div>
+  )
 }
 
 export default function QuestionBankScreen() {
@@ -91,7 +115,7 @@ export default function QuestionBankScreen() {
     return () => { cancelled = true }
   }, [filterSectionId, filterMode, filterFormat, filterDifficulty, filterLanguage, unusedOnly, reloadToken])
 
-  // Poll active generation jobs every 2 seconds; auto-reload list when done.
+  // Poll active generation jobs every 2 seconds
   useEffect(() => {
     if (activeJobs.length === 0) return
     const id = setTimeout(async () => {
@@ -117,7 +141,6 @@ export default function QuestionBankScreen() {
       if (needsReload) {
         setReloadToken((n) => n + 1)
         setGenSuccess(t('questionBank.jobDone', { count: totalDone }))
-        setTimeout(() => setGenSuccess(null), 4000)
       }
       if (errors.length > 0) setGenError(errors.join('; '))
       setActiveJobs(still)
@@ -129,7 +152,6 @@ export default function QuestionBankScreen() {
     item.question.toLowerCase().includes(searchText.trim().toLowerCase()),
   )
 
-  // --- selection helpers ---
   const visibleSelectedCount = visibleItems.filter((i) => selectedIds.has(i.id)).length
   const allVisibleSelected = visibleItems.length > 0 && visibleSelectedCount === visibleItems.length
 
@@ -158,7 +180,6 @@ export default function QuestionBankScreen() {
     }
   }
 
-  // --- generation ---
   function toggleGenSection(id) {
     setGenSectionIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
@@ -194,7 +215,6 @@ export default function QuestionBankScreen() {
     }
   }
 
-  // --- delete ---
   async function handleDelete(id) {
     if (!window.confirm(t('questionBank.deleteConfirm'))) return
     setError(null)
@@ -235,13 +255,24 @@ export default function QuestionBankScreen() {
 
   return (
     <div className="question-bank-screen">
-      <h2>{t('questionBank.title')}</h2>
+      {genSuccess && (
+        <div className="gen-notification-banner" role="status">
+          <span>{genSuccess}</span>
+          <button
+            type="button"
+            className="gen-notification-close"
+            aria-label="Dismiss"
+            onClick={() => setGenSuccess(null)}
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       <p className="settings-intro">{t('questionBank.intro')}</p>
 
       {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
+        <p className="error" role="alert">{error}</p>
       )}
 
       <section className="settings-panel">
@@ -310,14 +341,7 @@ export default function QuestionBankScreen() {
           </label>
 
           {genError && (
-            <p className="error" role="alert">
-              {genError}
-            </p>
-          )}
-          {genSuccess && (
-            <p className="success-msg" role="status">
-              {genSuccess}
-            </p>
+            <p className="error" role="alert">{genError}</p>
           )}
 
           <button type="submit" disabled={activeJobs.length >= MAX_QUEUE}>
@@ -346,22 +370,18 @@ export default function QuestionBankScreen() {
         onChange={(e) => setSearchText(e.target.value)}
       />
 
-      <div className="question-bank-filters">
-        <label>
-          {t('questionBank.filterSection')}
-          <select value={filterSectionId} onChange={(e) => setFilterSectionId(e.target.value)}>
-            <option value="">{t('questionBank.filterAll')}</option>
-            {sections.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
+      {sections.length > 0 && (
+        <FilterPills
+          value={filterSectionId}
+          onChange={setFilterSectionId}
+          options={sections.map((s) => ({ val: String(s.id), label: s.name }))}
+        />
+      )}
 
-        <label>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+        <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-2)' }}>
           {t('startTraining.mode')}
-          <select value={filterMode} onChange={(e) => setFilterMode(e.target.value)}>
+          <select value={filterMode} onChange={(e) => setFilterMode(e.target.value)} style={{ fontSize: 13, padding: '3px 8px' }}>
             <option value="">{t('questionBank.filterAll')}</option>
             <option value="technical">{t('enums.modeTechnical')}</option>
             <option value="behavioral">{t('enums.modeBehavioral')}</option>
@@ -369,18 +389,18 @@ export default function QuestionBankScreen() {
           </select>
         </label>
 
-        <label>
+        <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-2)' }}>
           {t('startTraining.format')}
-          <select value={filterFormat} onChange={(e) => setFilterFormat(e.target.value)}>
+          <select value={filterFormat} onChange={(e) => setFilterFormat(e.target.value)} style={{ fontSize: 13, padding: '3px 8px' }}>
             <option value="">{t('questionBank.filterAll')}</option>
             <option value="open_ended">{t('enums.formatOpenEnded')}</option>
             <option value="quiz">{t('enums.formatQuiz')}</option>
           </select>
         </label>
 
-        <label>
+        <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-2)' }}>
           {t('startTraining.difficulty')}
-          <select value={filterDifficulty} onChange={(e) => setFilterDifficulty(e.target.value)}>
+          <select value={filterDifficulty} onChange={(e) => setFilterDifficulty(e.target.value)} style={{ fontSize: 13, padding: '3px 8px' }}>
             <option value="">{t('questionBank.filterAll')}</option>
             <option value="easy">{t('enums.difficultyEasy')}</option>
             <option value="medium">{t('enums.difficultyMedium')}</option>
@@ -388,59 +408,57 @@ export default function QuestionBankScreen() {
           </select>
         </label>
 
-        <label>
+        <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-2)' }}>
           {t('questionBank.filterLanguage')}
-          <select value={filterLanguage} onChange={(e) => setFilterLanguage(e.target.value)}>
+          <select value={filterLanguage} onChange={(e) => setFilterLanguage(e.target.value)} style={{ fontSize: 13, padding: '3px 8px' }}>
             <option value="">{t('questionBank.filterAll')}</option>
             {SUPPORTED_LANGUAGES.map((code) => (
-              <option key={code} value={code}>
-                {LANGUAGE_NATIVE_NAMES[code]}
-              </option>
+              <option key={code} value={code}>{LANGUAGE_NATIVE_NAMES[code]}</option>
             ))}
           </select>
         </label>
 
-        <label className="filter-checkbox">
-          <input type="checkbox" checked={unusedOnly} onChange={(e) => setUnusedOnly(e.target.checked)} />
+        <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-2)', cursor: 'pointer' }}>
+          <input type="checkbox" checked={unusedOnly} onChange={(e) => setUnusedOnly(e.target.checked)} style={{ accentColor: 'var(--accent)' }} />
           {t('questionBank.filterUnusedOnly')}
         </label>
       </div>
 
       <div className="question-bank-list-header">
-          <label className="question-bank-select-all">
-            <input
-              type="checkbox"
-              checked={allVisibleSelected}
-              ref={(el) => {
-                if (el) el.indeterminate = visibleSelectedCount > 0 && !allVisibleSelected
-              }}
-              onChange={toggleSelectAllVisible}
-              disabled={visibleItems.length === 0}
-            />
-            <span className="question-bank-count">
-              {t('questionBank.questionCount', { shown: visibleItems.length, total: items.length })}
-            </span>
-          </label>
+        <label className="question-bank-select-all">
+          <input
+            type="checkbox"
+            checked={allVisibleSelected}
+            ref={(el) => {
+              if (el) el.indeterminate = visibleSelectedCount > 0 && !allVisibleSelected
+            }}
+            onChange={toggleSelectAllVisible}
+            disabled={visibleItems.length === 0}
+          />
+          <span className="question-bank-count">
+            {t('questionBank.questionCount', { shown: visibleItems.length, total: items.length })}
+          </span>
+        </label>
 
-          {selectedIds.size > 0 && (
-            <button
-              type="button"
-              className="btn-danger"
-              onClick={handleDeleteSelected}
-              disabled={deletingBulk}
-            >
-              {deletingBulk
-                ? t('questionBank.deleting')
-                : t('questionBank.deleteSelected', { count: selectedIds.size })}
-            </button>
-          )}
+        {selectedIds.size > 0 && (
+          <button
+            type="button"
+            className="btn-danger"
+            onClick={handleDeleteSelected}
+            disabled={deletingBulk}
+          >
+            {deletingBulk
+              ? t('questionBank.deleting')
+              : t('questionBank.deleteSelected', { count: selectedIds.size })}
+          </button>
+        )}
       </div>
 
       {loading ? (
         <p>{t('common.loading')}</p>
       ) : (
-        <ul className="question-bank-list">
-          {visibleItems.map((item) => {
+        <ul className="question-bank-table">
+          {visibleItems.map((item, idx) => {
             const expanded = expandedIds.has(item.id)
             const selected = selectedIds.has(item.id)
             return (
@@ -454,15 +472,14 @@ export default function QuestionBankScreen() {
                     />
                   </label>
 
+                  <span className="question-bank-item-idx">{idx + 1}</span>
+
                   <button
                     type="button"
                     className="question-bank-item-summary"
                     onClick={() => toggleExpanded(item.id)}
                     aria-expanded={expanded}
                   >
-                    <span className={`status-badge ${item.used_at ? 'used' : 'ready'}`}>
-                      {item.used_at ? t('questionBank.statusUsed') : t('questionBank.statusReady')}
-                    </span>
                     <span className="question-bank-item-body">
                       <span className="question-bank-item-section">{sectionNamesFor(item)}</span>
                       <span className={`question-bank-item-question${expanded ? ' expanded' : ''}`}>
@@ -472,6 +489,9 @@ export default function QuestionBankScreen() {
                         {t(MODE_KEYS[item.mode] || item.mode)} · {t(FORMAT_KEYS[item.format] || item.format)} ·{' '}
                         {t(DIFFICULTY_KEYS[item.difficulty] || item.difficulty)}
                       </span>
+                    </span>
+                    <span className={`status-badge ${item.used_at ? 'used' : 'ready'}`}>
+                      {item.used_at ? t('questionBank.statusUsed') : t('questionBank.statusReady')}
                     </span>
                     <span className="question-bank-chevron" aria-hidden="true">
                       {expanded ? '▾' : '▸'}
@@ -483,8 +503,8 @@ export default function QuestionBankScreen() {
                   <div className="question-bank-item-details">
                     {item.options && (
                       <ul className="question-bank-options">
-                        {item.options.map((opt, idx) => (
-                          <li key={idx} className={idx === item.correct_index ? 'correct' : ''}>
+                        {item.options.map((opt, i) => (
+                          <li key={i} className={i === item.correct_index ? 'correct' : ''}>
                             {opt}
                           </li>
                         ))}
@@ -504,9 +524,9 @@ export default function QuestionBankScreen() {
               </li>
             )
           })}
-          {items.length === 0 && <li className="section-list-empty">{t('questionBank.empty')}</li>}
+          {items.length === 0 && <li style={{ padding: '16px 18px', color: 'var(--text-2)' }}>{t('questionBank.empty')}</li>}
           {items.length > 0 && visibleItems.length === 0 && (
-            <li className="section-list-empty">{t('questionBank.noSearchResults')}</li>
+            <li style={{ padding: '16px 18px', color: 'var(--text-2)' }}>{t('questionBank.noSearchResults')}</li>
           )}
         </ul>
       )}

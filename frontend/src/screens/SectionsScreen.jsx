@@ -2,11 +2,49 @@ import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { useLanguage } from '../context/LanguageContext'
 
+function IconSearch() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.35-4.35" />
+    </svg>
+  )
+}
+
+function IconPlus() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  )
+}
+
+function IconTrash() {
+  return (
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14H6L5 6" />
+      <path d="M10 11v6M14 11v6" />
+      <path d="M9 6V4h6v2" />
+    </svg>
+  )
+}
+
+function SectionIcon({ name }) {
+  return (
+    <span className="section-card-icon">
+      {(name || '?').slice(0, 1).toUpperCase()}
+    </span>
+  )
+}
+
 export default function SectionsScreen() {
   const { t } = useLanguage()
   const [sections, setSections] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [search, setSearch] = useState('')
+  const [showCreateForm, setShowCreateForm] = useState(false)
   const [newName, setNewName] = useState('')
   const [newDescription, setNewDescription] = useState('')
   const [selectedSection, setSelectedSection] = useState(null)
@@ -50,6 +88,7 @@ export default function SectionsScreen() {
       await api.createSection(newName, newDescription)
       setNewName('')
       setNewDescription('')
+      setShowCreateForm(false)
       await loadSections()
     } catch (err) {
       setError(err.message)
@@ -138,44 +177,40 @@ export default function SectionsScreen() {
 
   if (loading) return <p>{t('sections.loading')}</p>
 
+  const filtered = sections.filter((s) =>
+    s.name.toLowerCase().includes(search.trim().toLowerCase()),
+  )
+
   return (
     <div className="sections-screen">
       {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
+        <p className="error" role="alert">{error}</p>
       )}
 
-      <div className="sections-layout">
-        <section className="sections-panel">
-          <h2>{t('sections.yourSections')}</h2>
-          <ul className="section-list">
-            {sections.map((s) => (
-              <li key={s.id}>
-                <div className={`section-card${selectedSection?.id === s.id ? ' active' : ''}`}>
-                  <button className="section-card-open" onClick={() => openSection(s.id)}>
-                    {s.name}
-                  </button>
-                  <button
-                    type="button"
-                    className="section-card-delete"
-                    onClick={() => handleDeleteSection(s.id, s.name)}
-                    aria-label={t('sections.deleteSectionAria', { name: s.name })}
-                    title={t('sections.deleteSectionTitle')}
-                  >
-                    ×
-                  </button>
-                </div>
-              </li>
-            ))}
-            {sections.length === 0 && (
-              <li className="section-list-empty">{t('sections.empty')}</li>
-            )}
-          </ul>
-        </section>
+      <div className="sections-toolbar">
+        <div className="sections-search-wrap">
+          <span className="sections-search-icon"><IconSearch /></span>
+          <input
+            type="search"
+            className="sections-search"
+            placeholder="Search sections…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <button
+          type="button"
+          className="sections-new-btn"
+          onClick={() => setShowCreateForm((v) => !v)}
+        >
+          <IconPlus />
+          {t('sections.createNew')}
+        </button>
+      </div>
 
-        <section className="create-section-panel">
-          <h3>{t('sections.createNew')}</h3>
+      {showCreateForm && (
+        <div className="create-section-panel" style={{ marginBottom: 20 }}>
+          <h3 style={{ marginTop: 0 }}>{t('sections.createNew')}</h3>
           <form onSubmit={handleCreateSection} className="create-section-form">
             <input
               placeholder={t('sections.namePlaceholder')}
@@ -188,14 +223,76 @@ export default function SectionsScreen() {
               value={newDescription}
               onChange={(e) => setNewDescription(e.target.value)}
             />
-            <button type="submit">{t('sections.createBtn')}</button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="submit">{t('sections.createBtn')}</button>
+              <button type="button" className="btn-secondary" onClick={() => setShowCreateForm(false)}>
+                {t('sections.cancel')}
+              </button>
+            </div>
           </form>
-        </section>
+        </div>
+      )}
+
+      {filtered.length === 0 && !showCreateForm && (
+        <p style={{ color: 'var(--text-2)' }}>
+          {sections.length === 0 ? t('sections.empty') : t('questionBank.noSearchResults')}
+        </p>
+      )}
+
+      <div className="section-cards-grid">
+        {filtered.map((s) => {
+          const docCount = s.document_count ?? 0
+          const isActive = selectedSection?.id === s.id
+          return (
+            <div
+              key={s.id}
+              className={`section-card-v2${isActive ? ' active' : ''}`}
+            >
+              <div className="section-card-header">
+                <SectionIcon name={s.name} />
+                <span className="section-card-badge ready">
+                  {docCount} {docCount === 1 ? 'doc' : 'docs'}
+                </span>
+              </div>
+
+              <div className="section-card-body">
+                <div className="section-card-name">{s.name}</div>
+                {s.description && (
+                  <div className="section-card-meta">{s.description}</div>
+                )}
+              </div>
+
+              <div className="section-card-progress">
+                <div className="section-card-progress-fill" style={{ width: `${Math.min(docCount * 20, 100)}%` }} />
+              </div>
+
+              <div className="section-card-actions">
+                <button
+                  type="button"
+                  className="section-card-train-btn"
+                  onClick={() => openSection(s.id)}
+                >
+                  {isActive ? t('sections.editBtn') : 'Open'}
+                </button>
+                <button
+                  type="button"
+                  className="section-card-delete-btn"
+                  onClick={() => handleDeleteSection(s.id, s.name)}
+                  aria-label={t('sections.deleteSectionAria', { name: s.name })}
+                  title={t('sections.deleteSectionTitle')}
+                >
+                  <IconTrash />
+                </button>
+              </div>
+            </div>
+          )
+        })}
       </div>
 
       {selectedSection && (
-        <section>
+        <div className="section-detail">
           <h3>{selectedSection.name}</h3>
+
           <ul className="document-list">
             {selectedSection.documents.map((doc) => {
               const isLong = doc.content.length > DOC_PREVIEW_LEN
@@ -254,7 +351,7 @@ export default function SectionsScreen() {
             {t('sections.importLabel')}
             <input type="file" accept=".md,.txt" onChange={handleUploadFile} />
           </label>
-        </section>
+        </div>
       )}
     </div>
   )

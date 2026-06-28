@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { useLanguage } from '../context/LanguageContext'
 
+const LETTERS = ['A', 'B', 'C', 'D']
+
 export default function TrainingScreen({ sessionId, onFinish, onInterrupt }) {
   const { t } = useLanguage()
   const [question, setQuestion] = useState(null)
@@ -25,17 +27,9 @@ export default function TrainingScreen({ sessionId, onFinish, onInterrupt }) {
       try {
         next = await api.nextQuestion(sessionId)
       } catch (err) {
-        // Transient generation failures (AI rate limit/timeout) are common
-        // enough to deserve one silent retry before bothering the user with
-        // an error - 409 means the session is genuinely done, not transient,
-        // so that one skips straight to the outer handler instead.
         if (err.status === 409) throw err
         next = await api.nextQuestion(sessionId)
       }
-      // Only clear the previous question's state once the new one actually
-      // arrives - clearing it beforehand meant a failed generation left the
-      // old (already-answered) question on screen but looking unanswered
-      // again, which read as if it had silently skipped ahead.
       setQuestion(next)
       setResult(null)
       setStreamingFeedback('')
@@ -44,9 +38,6 @@ export default function TrainingScreen({ sessionId, onFinish, onInterrupt }) {
       setSelectedIndex(null)
     } catch (err) {
       if (err.status === 409) {
-        // The session was already completed or finished elsewhere (e.g. resumed
-        // after the last question had already been answered) - nothing left to
-        // train, so just show what's there.
         onFinish()
         return
       }
@@ -101,11 +92,7 @@ export default function TrainingScreen({ sessionId, onFinish, onInterrupt }) {
     }
 
     resume()
-    return () => {
-      cancelled = true
-    }
-    // Runs once per mounted session to either resume a pending/in-progress
-    // session or kick off a brand new one.
+    return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
 
@@ -113,7 +100,7 @@ export default function TrainingScreen({ sessionId, onFinish, onInterrupt }) {
     try {
       await api.finishSession(sessionId)
     } catch {
-      // Best effort - the summary screen works regardless of whether this succeeded.
+      // best effort
     }
     onFinish()
   }
@@ -123,7 +110,7 @@ export default function TrainingScreen({ sessionId, onFinish, onInterrupt }) {
     try {
       await api.finishSession(sessionId)
     } catch {
-      // Best effort - the user still wants to leave.
+      // best effort
     }
     onInterrupt()
   }
@@ -196,28 +183,40 @@ export default function TrainingScreen({ sessionId, onFinish, onInterrupt }) {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-    // fetchNext/submitOpenEnded/submitQuizChoice only close over values already listed
-    // below; listing the functions too would just re-run this effect on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [question, result, loading, isQuiz, answerText])
+
+  const progressPct = question
+    ? Math.round((question.question_number / question.total_questions) * 100)
+    : 0
+  const atSessionLimit = question && question.question_number >= question.total_questions
+
+  function TopBar({ showInterrupt = true }) {
+    return (
+      <div className="training-top-bar">
+        <div className="training-progress-wrap">
+          <div className="training-progress-fill" style={{ width: `${progressPct}%` }} />
+        </div>
+        <span className="training-counter">
+          {question ? `${question.question_number} / ${question.total_questions}` : '…'}
+        </span>
+        {showInterrupt && (
+          <button type="button" className="training-interrupt" onClick={handleInterrupt}>
+            {t('training.interrupt')}
+          </button>
+        )}
+      </div>
+    )
+  }
 
   if (!question) {
     return (
       <div className="training-screen">
-        <div className="training-header">
-          <h2>{t('training.title')}</h2>
-          <button type="button" className="btn-danger" onClick={handleInterrupt}>
-            {t('training.interrupt')}
-          </button>
-        </div>
+        <TopBar showInterrupt />
         {error ? (
           <>
-            <p className="error" role="alert">
-              {error}
-            </p>
-            <button onClick={fetchNext} disabled={loading}>
-              {t('training.getFirstQuestion')}
-            </button>
+            <p className="error" role="alert">{error}</p>
+            <button onClick={fetchNext} disabled={loading}>{t('training.getFirstQuestion')}</button>
           </>
         ) : (
           <div className="loading-block" aria-busy="true" aria-live="polite">
@@ -232,17 +231,7 @@ export default function TrainingScreen({ sessionId, onFinish, onInterrupt }) {
   if (loadingNext) {
     return (
       <div className="training-screen">
-        <div className="training-header">
-          <h2>
-            {t('training.questionNumber', {
-              n: question.question_number + 1,
-              total: question.total_questions,
-            })}
-          </h2>
-          <button type="button" className="btn-danger" onClick={handleInterrupt}>
-            {t('training.interrupt')}
-          </button>
-        </div>
+        <TopBar showInterrupt />
         <div className="loading-block" aria-busy="true" aria-live="polite">
           <span className="spinner" aria-hidden="true" />
           <p>{t('training.generatingNext')}</p>
@@ -251,77 +240,75 @@ export default function TrainingScreen({ sessionId, onFinish, onInterrupt }) {
     )
   }
 
-  const showExplanation = !isQuiz && result && result.explanation
-  const atSessionLimit = question.question_number >= question.total_questions
-
   return (
     <div className="training-screen">
-      <div className="training-header">
-        <h2>
-          {t('training.questionNumber', { n: question.question_number, total: question.total_questions })}
-        </h2>
-        <button type="button" className="btn-danger" onClick={handleInterrupt}>
-          {t('training.interrupt')}
-        </button>
-      </div>
+      <TopBar showInterrupt />
+
       <div className="question-card">
-        {question.section_names?.length > 0 && (
-          <p className="section-name">{question.section_names.join(' · ')}</p>
-        )}
-        <p className="category">{question.category}</p>
+        <div className="question-card-meta">
+          {question.section_names?.length > 0 && (
+            <span className="section-pill">{question.section_names.join(' · ')}</span>
+          )}
+          {question.category && (
+            <span className="category-pill">{question.category}</span>
+          )}
+        </div>
+
         <p className="question">{question.question}</p>
+
+        {isQuiz && (
+          <div className="quiz-options">
+            {question.options.map((opt, idx) => {
+              let variant = ''
+              if (result) {
+                if (idx === result.correct_index) variant = ' correct'
+                else if (idx === selectedIndex) variant = ' incorrect'
+                else variant = ' dimmed'
+              } else if (selectedIndex === idx && loading) {
+                variant = ' selected'
+              }
+              return (
+                <button
+                  key={idx}
+                  className={`quiz-option-btn${variant}`}
+                  onClick={() => submitQuizChoice(idx)}
+                  disabled={Boolean(result) || loading}
+                >
+                  <span className="quiz-option-badge">{LETTERS[idx] || idx + 1}</span>
+                  {opt}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        {!isQuiz && !result && (
+          <form className="answer-form" onSubmit={handleOpenEndedSubmit}>
+            <textarea
+              value={answerText}
+              onChange={(e) => setAnswerText(e.target.value)}
+              rows={6}
+              placeholder={t('training.answerPlaceholder')}
+              disabled={loading}
+            />
+          </form>
+        )}
       </div>
 
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
-
-      {!result && question.hint && (
-        <div className="hint-block">
-          <button type="button" className="btn-secondary" onClick={() => setShowHint((h) => !h)}>
-            {showHint ? t('training.hideHint') : t('training.showHint')} <span className="shortcut-tag">h</span>
-          </button>
-          {showHint && <p className="hint">{t('training.hint', { text: question.hint })}</p>}
+      {showHint && question.hint && (
+        <div className="hint-block" role="note">
+          {t('training.hint', { text: question.hint })}
         </div>
       )}
 
-      {isQuiz && (
-        <div className="quiz-options">
-          {question.options.map((opt, idx) => {
-            let variant = ''
-            if (result) {
-              if (idx === result.correct_index) variant = 'correct'
-              else if (idx === selectedIndex) variant = 'incorrect'
-            }
-            return (
-              <button
-                key={idx}
-                className={variant}
-                onClick={() => submitQuizChoice(idx)}
-                disabled={Boolean(result) || loading}
-              >
-                <span className="shortcut-tag">{idx + 1}</span> {opt}
-              </button>
-            )
-          })}
+      {loading && !result && !isQuiz && (
+        <div className="streaming-feedback">
+          {streamingFeedback || (
+            <span className="loading-inline">
+              <span className="spinner" aria-hidden="true" /> {t('training.working')}
+            </span>
+          )}
         </div>
-      )}
-
-      {!result && !isQuiz && (
-        <form onSubmit={handleOpenEndedSubmit}>
-          <textarea
-            value={answerText}
-            onChange={(e) => setAnswerText(e.target.value)}
-            rows={6}
-            placeholder={t('training.answerPlaceholder')}
-            disabled={loading}
-          />
-          <button type="submit" disabled={loading || !answerText.trim()}>
-            {loading ? t('training.scoring') : t('training.submitAnswer')}
-          </button>
-        </form>
       )}
 
       {loading && !result && isQuiz && (
@@ -329,68 +316,109 @@ export default function TrainingScreen({ sessionId, onFinish, onInterrupt }) {
           <span className="spinner" aria-hidden="true" /> {t('training.working')}
         </p>
       )}
-      {loading && !result && !isQuiz && (
-        <p className="streaming-feedback">
-          {streamingFeedback || (
-            <span className="loading-inline">
-              <span className="spinner" aria-hidden="true" /> {t('training.working')}
-            </span>
-          )}
-        </p>
-      )}
 
       {result && (
-        <div className="result">
+        <div className="verdict-block" role="status" aria-live="polite">
           {isQuiz && (
-            <p className={result.is_correct ? 'correct' : 'incorrect'}>
-              {result.is_correct ? t('training.correct') : t('training.incorrect')}
-            </p>
+            <div className="verdict-header">
+              <span className={`verdict-dot ${result.is_correct ? 'correct' : 'incorrect'}`}>
+                {result.is_correct ? '✓' : '✕'}
+              </span>
+              <span className={`verdict-label ${result.is_correct ? 'correct' : 'incorrect'}`}>
+                {result.is_correct ? t('training.correct') : t('training.incorrect')}
+              </span>
+              <span style={{ marginLeft: 'auto', fontSize: '13px', color: 'var(--text-3)' }}>
+                {t('training.score', { score: result.score })}
+              </span>
+            </div>
           )}
+
           {isQuiz && !result.is_correct && (
             <div className="correct-answer-box">
-              <p>{t('training.correctAnswer', { answer: question.options[result.correct_index] })}</p>
+              {t('training.correctAnswer', { answer: question.options[result.correct_index] })}
             </div>
           )}
-          {isQuiz && result.explanation && (
-            <p className="explanation">{t('training.explanation', { text: result.explanation })}</p>
-          )}
-          <p>{t('training.score', { score: result.score })}</p>
-          {!isQuiz && <p className="submitted-answer">{t('training.yourAnswer', { answer: answerText })}</p>}
-          {!isQuiz && result.feedback && <p>{result.feedback}</p>}
-          {result.strengths.length > 0 && (
-            <div>
-              <strong>{t('training.strengths')}</strong>
-              <ul>
-                {result.strengths.map((s, i) => (
-                  <li key={i}>{s}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {result.gaps.length > 0 && (
-            <div>
-              <strong>{t('training.gaps')}</strong>
-              <ul>
-                {result.gaps.map((g, i) => (
-                  <li key={i}>{g}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {showExplanation && (
+
+          {result.explanation && (
             <p className="explanation">{t('training.explanation', { text: result.explanation })}</p>
           )}
 
-          {!atSessionLimit && (
-            <button onClick={fetchNext} disabled={loading}>
-              {t('training.nextQuestion')} <span className="shortcut-tag">n</span>
-            </button>
+          {!isQuiz && (
+            <>
+              <p>{t('training.score', { score: result.score })}</p>
+              <p className="submitted-answer">{t('training.yourAnswer', { answer: answerText })}</p>
+              {result.feedback && <p>{result.feedback}</p>}
+            </>
           )}
-          <button className="btn-secondary" onClick={handleFinish} disabled={loading}>
-            {t('training.finish')}
-          </button>
+
+          {result.strengths?.length > 0 && (
+            <div>
+              <strong>{t('training.strengths')}</strong>
+              <ul>{result.strengths.map((s, i) => <li key={i}>{s}</li>)}</ul>
+            </div>
+          )}
+
+          {result.gaps?.length > 0 && (
+            <div>
+              <strong>{t('training.gaps')}</strong>
+              <ul>{result.gaps.map((g, i) => <li key={i}>{g}</li>)}</ul>
+            </div>
+          )}
         </div>
       )}
+
+      {error && (
+        <p className="error" role="alert">{error}</p>
+      )}
+
+      <div className="action-bar">
+        {!result && question.hint && (
+          <button
+            type="button"
+            className="action-bar-hint"
+            onClick={() => setShowHint((h) => !h)}
+          >
+            {showHint ? t('training.hideHint') : t('training.showHint')}
+            <span className="action-key-badge">h</span>
+          </button>
+        )}
+
+        {result ? (
+          <>
+            {!atSessionLimit && (
+              <button
+                type="button"
+                className="action-bar-primary"
+                onClick={fetchNext}
+                disabled={loading}
+              >
+                {t('training.nextQuestion')}
+                <span className="action-key-badge">n</span>
+              </button>
+            )}
+            <button
+              type="button"
+              className="action-bar-skip"
+              onClick={handleFinish}
+              disabled={loading}
+            >
+              {t('training.finish')}
+            </button>
+          </>
+        ) : (
+          !isQuiz && (
+            <button
+              type="button"
+              className="action-bar-primary"
+              onClick={submitOpenEnded}
+              disabled={loading || !answerText.trim()}
+            >
+              {loading ? t('training.scoring') : t('training.submitAnswer')}
+              {!loading && <span className="action-key-badge">⌘↵</span>}
+            </button>
+          )
+        )}
+      </div>
     </div>
   )
 }
