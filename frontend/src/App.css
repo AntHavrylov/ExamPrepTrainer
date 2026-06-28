@@ -1570,6 +1570,14 @@ button:disabled {
 
 .settings-form { margin: 0; }
 
+.settings-key-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 4px;
+}
+
 /* Two-column layout for the compact select fields inside the generate form */
 .settings-form > label:not(:first-child) {
   display: grid;

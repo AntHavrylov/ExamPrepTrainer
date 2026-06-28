@@ -16,6 +16,7 @@ export default function SettingsScreen() {
   const [selectedModel, setSelectedModel] = useState('')
   const [modelFilter, setModelFilter] = useState('')
   const [saving, setSaving] = useState(false)
+  const [savingModel, setSavingModel] = useState(false)
   const [removing, setRemoving] = useState(false)
   const [savingLanguage, setSavingLanguage] = useState(false)
 
@@ -29,7 +30,9 @@ export default function SettingsScreen() {
       .then(([statusData, modelsData]) => {
         setStatus(statusData)
         setModels(modelsData)
-        if (modelsData.length > 0) setSelectedModel(modelsData[0].id)
+        // Pre-select the currently saved model when a key exists, otherwise first in list
+        const initial = statusData?.model || (modelsData.length > 0 ? modelsData[0].id : '')
+        setSelectedModel(initial)
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
@@ -69,6 +72,21 @@ export default function SettingsScreen() {
     }
   }
 
+  async function handleSaveModel(e) {
+    e.preventDefault()
+    setError(null)
+    setSavingModel(true)
+    try {
+      const updated = await api.updateModel(selectedModel)
+      setStatus(updated)
+      showToast()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSavingModel(false)
+    }
+  }
+
   async function handleRemove() {
     if (!window.confirm(t('settings.removeConfirm'))) return
     setError(null)
@@ -76,6 +94,7 @@ export default function SettingsScreen() {
     try {
       await api.deleteApiKey()
       setStatus({ has_key: false, model: null })
+      setSelectedModel(models.length > 0 ? models[0].id : '')
     } catch (err) {
       setError(err.message)
     } finally {
@@ -97,6 +116,8 @@ export default function SettingsScreen() {
       setSavingLanguage(false)
     }
   }
+
+  const modelChanged = status?.model && selectedModel !== status.model
 
   if (loading) return <p>{t('settings.loading')}</p>
 
@@ -131,12 +152,38 @@ export default function SettingsScreen() {
 
       {status?.has_key ? (
         <section className="settings-panel">
-          <p>
-            {t('settings.usingKeyPrefix')} <strong>{status.model}</strong>.
-          </p>
-          <button type="button" className="btn-danger" onClick={handleRemove} disabled={removing}>
-            {removing ? t('settings.removing') : t('settings.removeKey')}
-          </button>
+          <form onSubmit={handleSaveModel} className="settings-form">
+            <label>
+              {t('settings.filterModelsLabel')}
+              <input
+                type="text"
+                placeholder={t('settings.filterPlaceholder')}
+                value={modelFilter}
+                onChange={handleFilterChange}
+              />
+            </label>
+
+            <label>
+              {t('settings.modelLabel')}
+              <select value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)}>
+                {filteredModels.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+                {filteredModels.length === 0 && <option value="">{t('settings.noModelsMatch')}</option>}
+              </select>
+            </label>
+
+            <div className="settings-key-actions">
+              <button type="submit" disabled={savingModel || !modelChanged || !selectedModel}>
+                {savingModel ? t('settings.saving') : t('settings.saveKey')}
+              </button>
+              <button type="button" className="btn-danger" onClick={handleRemove} disabled={removing}>
+                {removing ? t('settings.removing') : t('settings.removeKey')}
+              </button>
+            </div>
+          </form>
         </section>
       ) : (
         <section className="settings-panel">

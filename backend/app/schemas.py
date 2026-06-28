@@ -223,6 +223,10 @@ class ApiKeySaveRequest(BaseModel):
     model: str = Field(min_length=1)
 
 
+class ModelUpdateRequest(BaseModel):
+    model: str = Field(min_length=1)
+
+
 class ModelOption(BaseModel):
     id: str
     name: str

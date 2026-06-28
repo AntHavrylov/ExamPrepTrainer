@@ -67,14 +67,34 @@ class OpenRouterClient:
                     raise AIClientError(f"OpenRouter request failed: {exc}") from exc
 
                 if response.status_code == 429:
-                    # Rate limit — read the body for the real reason, never retry
-                    # (the limit won't clear within a backoff window anyway).
                     try:
                         err_data = response.json()
-                        msg = err_data.get("error", {}).get("message") or response.text[:300]
+                        err_obj = err_data.get("error", {})
+                        msg = err_obj.get("message") or response.text[:300]
+                        meta = err_obj.get("metadata", {})
+                        provider = meta.get("provider_name", "")
+                        raw = meta.get("raw", "")
                     except Exception:
                         msg = response.text[:300]
-                    raise AIClientError(f"OpenRouter rate limit exceeded: {msg}")
+                        provider = ""
+                        raw = ""
+
+                    # "Provider returned error" means the upstream model provider
+                    # (not OpenRouter itself) hit a limit — often transient.
+                    # Retry once with a longer backoff before giving up.
+                    is_provider_error = "provider" in msg.lower()
+                    if is_provider_error and attempt < self.max_retries:
+                        await asyncio.sleep(self.backoff_base * (2 ** (attempt + 2)))
+                        continue
+
+                    # Build a human-readable message with all available detail.
+                    detail = raw[:200] if raw else msg
+                    if provider:
+                        detail = f"{provider}: {detail}"
+                    raise AIClientError(
+                        f"Rate limit exceeded — {detail}. "
+                        "Try again in a moment or switch to a different model in Settings."
+                    )
 
                 if response.status_code >= 500:
                     if attempt < self.max_retries:

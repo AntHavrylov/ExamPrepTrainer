@@ -13,6 +13,7 @@ from app.schemas import (
     ApiKeyStatusRead,
     LanguageUpdate,
     ModelOption,
+    ModelUpdateRequest,
     SessionLengthUpdate,
     UserRead,
 )
@@ -72,6 +73,21 @@ async def save_api_key(
         )
 
     row = save_user_api_key(db, current_user.id, payload.api_key, payload.model)
+    return ApiKeyStatusRead(has_key=True, model=row.model)
+
+
+@router.patch("/api-key", response_model=ApiKeyStatusRead)
+def update_model(
+    payload: ModelUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ApiKeyStatusRead:
+    row = get_user_api_key_row(db, current_user.id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No API key saved")
+    row.model = payload.model
+    db.commit()
+    db.refresh(row)
     return ApiKeyStatusRead(has_key=True, model=row.model)
 
 

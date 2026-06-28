@@ -302,6 +302,8 @@ export const api = {
   getApiKeyStatus: () => request('/settings/api-key'),
   saveApiKey: (apiKey, model) =>
     request('/settings/api-key', { method: 'PUT', body: { api_key: apiKey, model } }),
+  updateModel: (model) =>
+    request('/settings/api-key', { method: 'PATCH', body: { model } }),
   deleteApiKey: () => request('/settings/api-key', { method: 'DELETE' }),
   updateLanguage: (language) => request('/settings/language', { method: 'PUT', body: { language } }),
   updateSessionLength: (sessionLength) =>
