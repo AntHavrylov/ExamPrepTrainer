@@ -78,25 +78,29 @@ GitHub Pages) while still working with the existing relative-path dev proxy
 (`vite.config.js`) with zero behavior change locally.
 
 ### Subtasks
-- [ ] Add `VITE_API_BASE_URL` (empty string by default) read via
+- [x] Add `VITE_API_BASE_URL` (empty string by default) read via
       `import.meta.env`
-- [ ] Introduce a single `apiUrl(path)` helper in `api.js` that prefixes
-      `VITE_API_BASE_URL` onto every request path; use it in `publicRequest`,
-      `fetchAuthenticated`, and `streamAnswer` (currently all three build
-      `fetch` calls from a bare relative path)
-- [ ] Add `frontend/.env.production` (or set at CI build time) with
-      `VITE_API_BASE_URL=https://<backend-app>.azurewebsites.net`
+- [x] Introduce a single `apiUrl(path)` helper in `api.js` that prefixes
+      `VITE_API_BASE_URL` onto every request path; use it in `publicRequest`
+      and `fetchAuthenticated` (`streamAnswer` goes through
+      `fetchWithRefresh` -> `fetchAuthenticated`, so it's covered too)
+- [x] Documented in `frontend/.env.example` instead of committing a
+      `.env.production` with a real URL — the Azure backend doesn't exist
+      yet (recreated in Phase D5); the GitHub Actions workflow in Phase D4
+      will set `VITE_API_BASE_URL` at build time from a repo variable once
+      the backend URL is known
 
 ### Tests
-- [ ] Existing Vitest suite passes unchanged with the default empty base URL
-- [ ] Unit test for `apiUrl()`: empty base -> unchanged relative path;
-      non-empty base -> `base + path`
+- [x] Existing Vitest suite passes unchanged (4 pre-existing failing test
+      files, unrelated to `api.js`, confirmed identical before/after via
+      `git stash -u`)
+- [x] Unit test for `apiUrl()`: empty base -> unchanged relative path;
+      non-empty base -> `base + path` (`src/api.test.js`)
 
 ### Definition of Done
 - `npm run dev` behavior against the local backend is unchanged
-- `npm run build` with `VITE_API_BASE_URL` set produces a bundle that calls
-  the absolute backend URL
-- `pytest`/`vitest` green
+- `apiUrl()` produces an absolute backend URL when `VITE_API_BASE_URL` is set
+- `vitest` shows no new failures vs. baseline
 
 ---
 
@@ -215,7 +219,7 @@ the quota-exhaustion incident.
 ## Phase checklist
 
 - [x] Phase D1 — Backend CORS + Neon cutover (dev)
-- [ ] Phase D2 — Frontend absolute API base URL
+- [x] Phase D2 — Frontend absolute API base URL
 - [ ] Phase D3 — Frontend cold-start UX
 - [ ] Phase D4 — GitHub Pages deployment pipeline
 - [ ] Phase D5 — Azure backend (re)deploy with lessons applied

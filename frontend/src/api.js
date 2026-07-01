@@ -2,6 +2,16 @@ const TOKEN_KEY = 'prep_trainer_token'
 const REFRESH_TOKEN_KEY = 'prep_trainer_refresh_token'
 export const ACTIVE_SESSION_KEY = 'prep_trainer_active_session'
 
+// Empty by default: relative paths work as-is with the local dev proxy
+// (vite.config.js) and the Nginx-proxied Docker deploy. Set at build time
+// (VITE_API_BASE_URL) when the frontend and backend are on different
+// origins, e.g. GitHub Pages calling an Azure-hosted backend.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
+
+export function apiUrl(path) {
+  return `${API_BASE_URL}${path}`
+}
+
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY)
 }
@@ -132,7 +142,7 @@ async function publicRequest(path, { method = 'GET', body } = {}) {
     requestBody = JSON.stringify(body)
   }
 
-  const response = await fetch(path, { method, headers, body: requestBody })
+  const response = await fetch(apiUrl(path), { method, headers, body: requestBody })
   return parseResponse(response)
 }
 
@@ -168,7 +178,7 @@ async function fetchAuthenticated(path, { method = 'GET', body } = {}) {
     requestBody = JSON.stringify(body)
   }
 
-  return fetch(path, { method, headers, body: requestBody })
+  return fetch(apiUrl(path), { method, headers, body: requestBody })
 }
 
 async function fetchWithRefresh(path, options = {}) {
