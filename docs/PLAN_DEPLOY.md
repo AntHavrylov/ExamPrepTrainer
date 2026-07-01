@@ -166,25 +166,28 @@ message instead of looking broken.
       build` with `VITE_API_BASE_URL` from the `vars.VITE_API_BASE_URL` repo
       variable (empty until Phase D5 gives us the Azure backend URL), then
       `actions/upload-pages-artifact` + `actions/deploy-pages`
-- [ ] Enable GitHub Pages in repo Settings -> Pages, source = GitHub Actions
-      — **manual step, not done yet**: no `gh` CLI in this environment and
-      it's a repo-settings change, so needs to be done by hand (or by the
-      user) before the workflow's `deploy` job can succeed
+- [x] Enable GitHub Pages in repo Settings -> Pages, source = GitHub Actions
+      — done by the user (repo-settings change, out of reach without `gh`
+      CLI here)
 - [x] No SPA-routing fallback (`404.html`) needed — app has no
       client-side router (single-page, state-driven screens), confirmed via
       `frontend/src` (no `react-router` dependency)
 
 ### Tests / Verification
-- [ ] Workflow run succeeds on push to `main` — **not yet verified**; needs
-      Pages enabled (above) and an actual push, neither done yet
-- [ ] Deployed Pages URL loads the app shell and static assets (no 404s from
-      a wrong `base` path) — **not yet verified against a live deploy**;
-      `base` path correctness confirmed locally via `npm run build` output
+- [x] Workflow run succeeds on push to `main` — verified via the public
+      GitHub Actions API (repo is public, no token needed): run
+      `28522918550` on the D4 commit completed with `conclusion: success`
+- [x] Deployed Pages URL loads the app shell and static assets (no 404s from
+      a wrong `base` path) — `https://anthavrylov.github.io/ExamPrepTrainer/`
+      returns 200 and its HTML references `/ExamPrepTrainer/assets/...`; both
+      the JS and CSS assets return 200
 
 ### Definition of Done
-- Pushing to `main` auto-deploys the frontend to GitHub Pages — **workflow
-  written, not yet exercised** (Pages isn't enabled yet)
-- Page loads correctly at the Pages URL — **pending** the above
+- Pushing to `main` auto-deploys the frontend to GitHub Pages — confirmed
+- Page loads correctly at the Pages URL — confirmed (note: the page will
+  show the D3 "waking up the server" banner indefinitely until Phase D5
+  gives it a real backend to reach — `VITE_API_BASE_URL` is still empty, so
+  `/health` resolves against `github.io` itself, which 404s)
 
 ---
 
@@ -252,7 +255,7 @@ the quota-exhaustion incident.
 - [x] Phase D1 — Backend CORS + Neon cutover (dev)
 - [x] Phase D2 — Frontend absolute API base URL
 - [x] Phase D3 — Frontend cold-start UX
-- [ ] Phase D4 — GitHub Pages deployment pipeline
+- [x] Phase D4 — GitHub Pages deployment pipeline
 - [ ] Phase D5 — Azure backend (re)deploy with lessons applied
 - [ ] Phase D6 — End-to-end verification
 
