@@ -21,6 +21,7 @@ describe('App session resume', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url) => {
+        if (url === '/health') return jsonResponse(200, { status: 'ok' })
         if (url === '/auth/me') {
           return jsonResponse(200, {
             id: 1,
@@ -77,6 +78,7 @@ describe('App session resume', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url, options) => {
+        if (url === '/health') return jsonResponse(200, { status: 'ok' })
         if (url === '/auth/me') {
           return jsonResponse(200, {
             id: 1,
@@ -146,6 +148,7 @@ describe('App session resume', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url, options) => {
+        if (url === '/health') return jsonResponse(200, { status: 'ok' })
         if (url === '/auth/me') {
           return jsonResponse(200, {
             id: 1,

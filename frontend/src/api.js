@@ -12,6 +12,18 @@ export function apiUrl(path) {
   return `${API_BASE_URL}${path}`
 }
 
+// Used to detect a cold-starting backend (e.g. Azure App Service waking from
+// idle) before it can affect an auth check or login attempt. Never throws:
+// a network error just means "not ready yet."
+export async function checkHealth() {
+  try {
+    const response = await fetch(apiUrl('/health'))
+    return response.ok
+  } catch {
+    return false
+  }
+}
+
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY)
 }

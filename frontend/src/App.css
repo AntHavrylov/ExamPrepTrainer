@@ -315,6 +315,19 @@
   color: var(--text-2);
 }
 
+.waking-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.waking-banner .spinner {
+  width: 1.5em;
+  height: 1.5em;
+  border-width: 3px;
+}
+
 /* ─── Forms & inputs ──────────────────────────────────────────── */
 
 form {

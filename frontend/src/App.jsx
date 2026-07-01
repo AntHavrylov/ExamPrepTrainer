@@ -4,8 +4,10 @@ import Sidebar from './components/Sidebar'
 import TweaksPanel from './components/TweaksPanel'
 import { ACTIVE_SESSION_KEY } from './api'
 import { LAST_TRAINING_SETTINGS_KEY, PRE_SELECT_SECTIONS_KEY } from './constants'
+import WakingBanner from './components/WakingBanner'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { LanguageProvider, useLanguage } from './context/LanguageContext'
+import { useServerWakeup } from './hooks/useServerWakeup'
 import { useTheme } from './hooks/useTheme'
 import { useTweaks } from './hooks/useTweaks'
 import LoginScreen from './screens/LoginScreen'
@@ -188,6 +190,15 @@ function AppShell() {
 }
 
 export default function App() {
+  const { ready, waking, exhausted, retryNow } = useServerWakeup()
+
+  if (!ready) {
+    // Render nothing during the flash-delay grace period so a fast, already-warm
+    // backend never shows the banner at all.
+    if (!waking) return null
+    return <WakingBanner exhausted={exhausted} onRetry={retryNow} />
+  }
+
   return (
     <LanguageProvider>
       <AuthProvider>
