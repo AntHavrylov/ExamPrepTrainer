@@ -154,25 +154,37 @@ message instead of looking broken.
 **Goal:** frontend auto-deploys to GitHub Pages as static files, no container.
 
 ### Subtasks
-- [ ] Decide GitHub Pages mode (project page under `/<repo>/` vs. a custom
-      domain) and set `vite.config.js`'s `base` accordingly
-- [ ] `.github/workflows/deploy-frontend.yml`: on push to `main` (or manual
-      dispatch) — `npm ci`, `npm run build` with `VITE_API_BASE_URL` set from
-      a repo variable, then deploy via `actions/upload-pages-artifact` +
-      `actions/deploy-pages`
+- [x] Decide GitHub Pages mode: **project page** under `/ExamPrepTrainer/`
+      (no custom domain) — repo is `AntHavrylov/ExamPrepTrainer`, so Pages
+      serves at `https://anthavrylov.github.io/ExamPrepTrainer/`. Set
+      `vite.config.js`'s `base` to `/ExamPrepTrainer/` for the production
+      build only (dev server and vitest keep `base: '/'`, via a
+      `command === 'build'` check) — confirmed locally via `npm run build`:
+      emitted `dist/index.html` references `/ExamPrepTrainer/assets/...`
+- [x] `.github/workflows/deploy-frontend.yml`: on push to `main` (path-
+      filtered to `frontend/**`) or manual dispatch — `npm ci`, `npm run
+      build` with `VITE_API_BASE_URL` from the `vars.VITE_API_BASE_URL` repo
+      variable (empty until Phase D5 gives us the Azure backend URL), then
+      `actions/upload-pages-artifact` + `actions/deploy-pages`
 - [ ] Enable GitHub Pages in repo Settings -> Pages, source = GitHub Actions
-- [ ] No SPA-routing fallback (`404.html`) needed — app has no
+      — **manual step, not done yet**: no `gh` CLI in this environment and
+      it's a repo-settings change, so needs to be done by hand (or by the
+      user) before the workflow's `deploy` job can succeed
+- [x] No SPA-routing fallback (`404.html`) needed — app has no
       client-side router (single-page, state-driven screens), confirmed via
       `frontend/src` (no `react-router` dependency)
 
 ### Tests / Verification
-- [ ] Workflow run succeeds on push to `main`
+- [ ] Workflow run succeeds on push to `main` — **not yet verified**; needs
+      Pages enabled (above) and an actual push, neither done yet
 - [ ] Deployed Pages URL loads the app shell and static assets (no 404s from
-      a wrong `base` path)
+      a wrong `base` path) — **not yet verified against a live deploy**;
+      `base` path correctness confirmed locally via `npm run build` output
 
 ### Definition of Done
-- Pushing to `main` auto-deploys the frontend to GitHub Pages
-- Page loads correctly at the Pages URL
+- Pushing to `main` auto-deploys the frontend to GitHub Pages — **workflow
+  written, not yet exercised** (Pages isn't enabled yet)
+- Page loads correctly at the Pages URL — **pending** the above
 
 ---
 

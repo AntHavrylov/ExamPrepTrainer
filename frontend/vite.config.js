@@ -3,8 +3,14 @@ import react from '@vitejs/plugin-react'
 
 const BACKEND_URL = 'http://127.0.0.1:8001'
 
+// GitHub Pages serves this as a project page (https://<user>.github.io/ExamPrepTrainer/),
+// not a custom domain, so the production build needs assets rooted at /ExamPrepTrainer/.
+// Dev server and tests are unaffected (served from /).
+const GITHUB_PAGES_BASE = '/ExamPrepTrainer/'
+
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  base: command === 'build' ? GITHUB_PAGES_BASE : '/',
   plugins: [react()],
   server: {
     proxy: {
@@ -28,4 +34,4 @@ export default defineConfig({
     setupFiles: './src/setupTests.js',
     globals: true,
   },
-})
+}))
