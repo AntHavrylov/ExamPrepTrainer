@@ -397,7 +397,22 @@ which also reverse-proxies API paths to the backend — mirroring
 
 **Goal:** runs on the internet, for free.
 
-### Subtasks
+> **Architecture revised — see `docs/PLAN_DEPLOY.md` for the current,
+> detailed plan.** The first deploy attempt put both frontend and backend on
+> Azure App Service (F1) sharing one plan; a crash-loop on either app burned
+> the plan's entire shared daily CPU quota, taking both apps down
+> (`QuotaExceeded`) twice. Revised architecture: **DB** stays Neon Postgres;
+> **backend** stays on Azure App Service (now the *only* app on its plan, so
+> it can no longer be starved by an unrelated container); **frontend** moves
+> to **GitHub Pages** (static, no container, no cold start) instead of a
+> second Azure Web App. Since frontend and backend are now different
+> origins, the backend needs CORS middleware (previously avoided via
+> same-origin Nginx proxying), and the frontend needs a "waking up the
+> server" message for the backend's cold start. The subtasks below are kept
+> for history; `docs/PLAN_DEPLOY.md` Phases D1–D6 are the authoritative
+> checklist going forward.
+
+### Subtasks (superseded by docs/PLAN_DEPLOY.md)
 - [x] DB: create free Postgres on Neon; get connection string
 - [ ] Backend: switch `DATABASE_URL` to Postgres; run Alembic migrations on deploy
 - [x] Backend image built from the existing `backend/Dockerfile` and pushed to
@@ -421,9 +436,8 @@ which also reverse-proxies API paths to the backend — mirroring
       (Free tier cold start) — applies to both services
 
 ### Definition of Done
-- Full flow works on production URLs
-- No secrets in the repo
-- Migrations applied in prod
+- See `docs/PLAN_DEPLOY.md` — Phase D6 (End-to-end verification) is the
+  current Definition of Done for deploy.
 
 ---
 
@@ -439,7 +453,7 @@ which also reverse-proxies API paths to the backend — mirroring
 - [x] Phase 8 — React frontend with login
 - [x] Phase 9 — Polish
 - [x] Phase 9.5 — Docker support (local containers)
-- [ ] Phase 10 — Deploy
+- [ ] Phase 10 — Deploy (see `docs/PLAN_DEPLOY.md`)
 
 **Rule:** do not advance until every subtask in the current phase is `[x]` and the
 test suite is green.

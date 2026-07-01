@@ -31,7 +31,17 @@ class Settings(BaseSettings):
     ai_rate_limit_max_requests: int = 30
     ai_rate_limit_window_seconds: int = 60
 
+    # Comma-separated allowed origins for CORS (e.g. the GitHub Pages URL in
+    # prod). Empty by default: same-origin setups (local dev proxy, or the
+    # Nginx-proxied Docker deploy) never send a cross-origin request, so no
+    # origin needs to be allowed.
+    cors_allowed_origins: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    @property
+    def cors_allowed_origins_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()]
 
 
 settings = Settings()
