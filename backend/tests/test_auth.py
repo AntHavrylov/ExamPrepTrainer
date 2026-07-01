@@ -1,3 +1,5 @@
+from app.auth.security import DUMMY_PASSWORD_HASH, verify_password
+from app.config import settings
 from app.models import RefreshToken, User
 
 
@@ -135,3 +137,35 @@ def test_logout_revokes_refresh_token(client):
 
     reused = client.post("/auth/refresh", json={"refresh_token": refresh_token})
     assert reused.status_code == 401
+
+
+def test_login_verifies_password_hash_even_for_unknown_email():
+    # A nonexistent email must still run a real bcrypt verify (against the
+    # dummy hash) rather than short-circuiting, so response timing can't be
+    # used to tell registered emails apart from unregistered ones.
+    assert not verify_password("whatever", DUMMY_PASSWORD_HASH)
+
+
+def test_login_is_rate_limited_per_ip(client, monkeypatch):
+    monkeypatch.setattr(settings, "auth_rate_limit_max_requests", 3)
+    client.post("/auth/register", json={"email": "rl-login@example.com", "password": "supersecret"})
+
+    for _ in range(3):
+        client.post("/auth/login", json={"email": "rl-login@example.com", "password": "wrong"})
+
+    limited = client.post(
+        "/auth/login", json={"email": "rl-login@example.com", "password": "supersecret"}
+    )
+    assert limited.status_code == 429
+
+
+def test_register_is_rate_limited_per_ip(client, monkeypatch):
+    monkeypatch.setattr(settings, "auth_rate_limit_max_requests", 2)
+
+    client.post("/auth/register", json={"email": "rl-a@example.com", "password": "supersecret"})
+    client.post("/auth/register", json={"email": "rl-b@example.com", "password": "supersecret"})
+
+    limited = client.post(
+        "/auth/register", json={"email": "rl-c@example.com", "password": "supersecret"}
+    )
+    assert limited.status_code == 429

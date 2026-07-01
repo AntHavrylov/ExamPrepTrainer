@@ -72,7 +72,7 @@ def _avoid_themes_line(avoid_themes: list[str] | None) -> str:
 
 def _parse_questions(raw: str) -> list[dict[str, str]] | None:
     data = extract_json_value(raw, "[", "]")
-    if not isinstance(data, list):
+    if not isinstance(data, list) or not data:
         return None
 
     questions: list[dict[str, str]] = []
@@ -134,7 +134,7 @@ async def generate_questions(
 
 def _parse_quiz_questions(raw: str) -> list[dict] | None:
     data = extract_json_value(raw, "[", "]")
-    if not isinstance(data, list):
+    if not isinstance(data, list) or not data:
         return None
 
     questions: list[dict] = []

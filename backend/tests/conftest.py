@@ -7,6 +7,7 @@ from sqlalchemy.pool import StaticPool
 from app.config import settings
 from app.db import Base, get_db, get_session_factory
 from app.main import app
+from app.rate_limit import _auth_hits as _auth_rate_limit_hits
 from app.rate_limit import _hits as _ai_rate_limit_hits
 
 
@@ -18,6 +19,16 @@ def _clear_ai_rate_limit_buckets():
     _ai_rate_limit_hits.clear()
     yield
     _ai_rate_limit_hits.clear()
+
+
+@pytest.fixture(autouse=True)
+def _clear_auth_rate_limit_buckets():
+    # Same reasoning as above: keyed by client IP, which is the same
+    # "testclient" string for every test's TestClient - reset per test so
+    # unrelated tests' register/login calls don't accumulate into one bucket.
+    _auth_rate_limit_hits.clear()
+    yield
+    _auth_rate_limit_hits.clear()
 
 
 @pytest.fixture(autouse=True)

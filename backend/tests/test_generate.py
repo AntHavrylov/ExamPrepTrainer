@@ -156,6 +156,55 @@ def test_generate_retries_once_on_invalid_json(client, make_user):
     assert response.json() == [{"question": "Q1", "category": "technical"}]
 
 
+def test_generate_treats_empty_array_as_failure_and_retries(client, make_user):
+    headers = make_user("gen-empty@example.com")
+    section_id = _create_section_with_document(client, headers)
+
+    good_json = json.dumps(
+        [
+            {
+                "question": "Q1",
+                "category": "technical",
+                "theme": "general",
+                "hint": "A small nudge.",
+                "explanation": "A model explanation.",
+            }
+        ]
+    )
+    stub = _FlakyJSONAIClient("[]", good_json)
+    _override_ai_client(stub)
+    try:
+        response = client.post(
+            "/ai/generate",
+            json={"section_ids": [section_id], "mode": "mixed", "count": 1},
+            headers=headers,
+        )
+    finally:
+        _clear_ai_override()
+
+    assert response.status_code == 200
+    assert stub.calls == 2
+    assert response.json() == [{"question": "Q1", "category": "technical"}]
+
+
+def test_generate_fails_gracefully_when_empty_array_on_both_attempts(client, make_user):
+    headers = make_user("gen-empty-both@example.com")
+    section_id = _create_section_with_document(client, headers)
+
+    stub = _FlakyJSONAIClient("[]", "[]")
+    _override_ai_client(stub)
+    try:
+        response = client.post(
+            "/ai/generate",
+            json={"section_ids": [section_id], "mode": "mixed", "count": 1},
+            headers=headers,
+        )
+    finally:
+        _clear_ai_override()
+
+    assert response.status_code == 503
+
+
 def test_generate_fails_gracefully_when_json_never_parses(client, make_user):
     headers = make_user("gen-f@example.com")
     section_id = _create_section_with_document(client, headers)
@@ -323,6 +372,29 @@ def test_generate_quiz_questions_retries_once_on_malformed_item():
 
     assert stub.calls == 2
     assert result[0]["question"] == "Good"
+
+
+def test_generate_questions_accepts_short_response_without_retrying(monkeypatch):
+    # A well-formed but short response (fewer items than requested) is
+    # accepted as-is, not retried - background pool top-ups intentionally
+    # request more than the model may be able to produce from a small
+    # knowledge base, and a partial batch is still useful.
+    short = json.dumps(
+        [
+            {
+                "question": "Only one",
+                "category": "technical",
+                "theme": "general",
+                "hint": "A nudge.",
+                "explanation": "An explanation.",
+            }
+        ]
+    )
+    stub = _StubAIClient(short)
+    result = asyncio.run(generate_questions([_make_section()], "technical", 2, stub))
+
+    assert stub.calls == 1
+    assert len(result) == 1
 
 
 def test_generate_quiz_questions_fails_gracefully_when_never_valid():

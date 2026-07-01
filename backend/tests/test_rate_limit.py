@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from app.ai.client import get_ai_client
 from app.config import settings
 from app.main import app
-from app.rate_limit import _hits, check_ai_rate_limit
+from app.rate_limit import _auth_hits, _hits, check_ai_rate_limit, check_auth_rate_limit
 
 
 def test_check_ai_rate_limit_allows_up_to_the_max(monkeypatch):
@@ -41,6 +41,40 @@ def test_check_ai_rate_limit_resets_after_window_expires(monkeypatch):
     bucket[0] -= 61  # simulate the window having elapsed
 
     check_ai_rate_limit(user_id=1)  # should succeed again, old hit expired
+
+
+def test_check_auth_rate_limit_allows_up_to_the_max(monkeypatch):
+    monkeypatch.setattr(settings, "auth_rate_limit_max_requests", 3)
+    monkeypatch.setattr(settings, "auth_rate_limit_window_seconds", 60)
+
+    for _ in range(3):
+        check_auth_rate_limit("1.2.3.4")
+
+    with pytest.raises(HTTPException) as exc_info:
+        check_auth_rate_limit("1.2.3.4")
+    assert exc_info.value.status_code == 429
+
+
+def test_check_auth_rate_limit_is_per_key(monkeypatch):
+    monkeypatch.setattr(settings, "auth_rate_limit_max_requests", 1)
+    monkeypatch.setattr(settings, "auth_rate_limit_window_seconds", 60)
+
+    check_auth_rate_limit("1.2.3.4")
+    check_auth_rate_limit("5.6.7.8")  # different IP, separate bucket
+
+    with pytest.raises(HTTPException):
+        check_auth_rate_limit("1.2.3.4")
+
+
+def test_check_auth_rate_limit_resets_after_window_expires(monkeypatch):
+    monkeypatch.setattr(settings, "auth_rate_limit_max_requests", 1)
+    monkeypatch.setattr(settings, "auth_rate_limit_window_seconds", 60)
+
+    check_auth_rate_limit("1.2.3.4")
+    bucket = _auth_hits["1.2.3.4"]
+    bucket[0] -= 61  # simulate the window having elapsed
+
+    check_auth_rate_limit("1.2.3.4")  # should succeed again, old hit expired
 
 
 class _StubAIClient:

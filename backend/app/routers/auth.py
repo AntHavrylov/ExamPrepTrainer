@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user
 from app.auth.security import (
+    DUMMY_PASSWORD_HASH,
     create_access_token,
     generate_refresh_token,
     hash_password,
@@ -15,6 +16,7 @@ from app.auth.security import (
 from app.config import settings
 from app.db import get_db
 from app.models import RefreshToken, User
+from app.rate_limit import enforce_auth_rate_limit
 from app.schemas import RefreshRequest, Token, UserCreate, UserLogin, UserRead
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -53,7 +55,11 @@ def _get_active_refresh_token(db: Session, raw_token: str) -> RefreshToken:
 
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
-def register(payload: UserCreate, db: Session = Depends(get_db)) -> User:
+def register(
+    payload: UserCreate,
+    db: Session = Depends(get_db),
+    _rate_limit: None = Depends(enforce_auth_rate_limit),
+) -> User:
     existing = db.scalar(select(User).where(User.email == payload.email))
     if existing is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
@@ -70,9 +76,15 @@ def register(payload: UserCreate, db: Session = Depends(get_db)) -> User:
 
 
 @router.post("/login", response_model=Token)
-def login(payload: UserLogin, db: Session = Depends(get_db)) -> Token:
+def login(
+    payload: UserLogin,
+    db: Session = Depends(get_db),
+    _rate_limit: None = Depends(enforce_auth_rate_limit),
+) -> Token:
     user = db.scalar(select(User).where(User.email == payload.email))
-    if user is None or not verify_password(payload.password, user.hashed_password):
+    hashed = user.hashed_password if user is not None else DUMMY_PASSWORD_HASH
+    password_ok = verify_password(payload.password, hashed)
+    if user is None or not password_ok:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",

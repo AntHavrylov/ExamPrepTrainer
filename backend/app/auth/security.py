@@ -9,6 +9,12 @@ from app.config import settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+# A valid-looking hash with no real user behind it. Login verifies against
+# this when the email isn't found, so a nonexistent-email response takes the
+# same bcrypt-verify time as a real one and can't be used to enumerate
+# registered accounts via response timing.
+DUMMY_PASSWORD_HASH = pwd_context.hash(secrets.token_hex(16))
+
 
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)

@@ -1,7 +1,9 @@
 import json
 
 from app.ai.client import get_ai_client
+from app.db import get_session_factory
 from app.main import app
+from app.models import Attempt
 
 OPEN_ENDED_QUESTION_JSON = json.dumps(
     [
@@ -396,6 +398,118 @@ def test_stream_answer_double_submit_does_not_recall_ai(client, make_user):
     assert first_result["score"] == second_result["score"] == 6
 
 
+def test_answer_quiz_route_acquires_attempt_lock(client, make_user, monkeypatch):
+    """Regression guard for the fix in #4: proves the live
+    `/sessions/{id}/answer` route (quiz branch) actually calls
+    `_lock_attempt` before writing a score. The existing double-submit tests
+    only exercise the earlier *unlocked* fast-path check and would still
+    pass even if the locked re-check were deleted from the route entirely.
+    """
+    import app.routers.sessions as sessions_module
+
+    headers = make_user("lock-wiring-quiz@example.com")
+    section_id = _create_section_with_document(client, headers)
+    session_id = _start_session(client, headers, section_id, "quiz")
+
+    _override_ai_client(_StubAIClient(QUIZ_QUESTION_JSON))
+    try:
+        client.post(f"/sessions/{session_id}/next", headers=headers)
+    finally:
+        _clear_ai_override()
+
+    calls = []
+    original = sessions_module._lock_attempt
+
+    def spy(db, attempt_id):
+        calls.append(attempt_id)
+        return original(db, attempt_id)
+
+    monkeypatch.setattr(sessions_module, "_lock_attempt", spy)
+
+    response = client.post(
+        f"/sessions/{session_id}/answer", json={"selected_index": 1}, headers=headers
+    )
+
+    assert response.status_code == 200
+    assert len(calls) == 1
+
+
+def test_answer_open_ended_route_acquires_attempt_lock(client, make_user, monkeypatch):
+    """Same regression guard as above, for the open-ended branch of
+    `/sessions/{id}/answer`.
+    """
+    import app.routers.sessions as sessions_module
+
+    headers = make_user("lock-wiring-open@example.com")
+    section_id = _create_section_with_document(client, headers)
+    session_id = _start_session(client, headers, section_id, "open_ended")
+
+    _override_ai_client(_StubAIClient(OPEN_ENDED_QUESTION_JSON))
+    try:
+        client.post(f"/sessions/{session_id}/next", headers=headers)
+    finally:
+        _clear_ai_override()
+
+    calls = []
+    original = sessions_module._lock_attempt
+
+    def spy(db, attempt_id):
+        calls.append(attempt_id)
+        return original(db, attempt_id)
+
+    monkeypatch.setattr(sessions_module, "_lock_attempt", spy)
+
+    eval_stub = _StubAIClient(
+        json.dumps({"score": 7, "feedback": "ok", "strengths": [], "gaps": []})
+    )
+    _override_ai_client(eval_stub)
+    try:
+        response = client.post(
+            f"/sessions/{session_id}/answer", json={"answer": "an answer"}, headers=headers
+        )
+    finally:
+        _clear_ai_override()
+
+    assert response.status_code == 200
+    assert len(calls) == 1
+
+
+def test_answer_stream_route_acquires_attempt_lock(client, make_user, monkeypatch):
+    """Same regression guard as above, for `/sessions/{id}/answer/stream`."""
+    import app.routers.sessions as sessions_module
+
+    headers = make_user("lock-wiring-stream@example.com")
+    section_id = _create_section_with_document(client, headers)
+    session_id = _start_session(client, headers, section_id, "open_ended")
+
+    _override_ai_client(_StubAIClient(OPEN_ENDED_QUESTION_JSON))
+    try:
+        client.post(f"/sessions/{session_id}/next", headers=headers)
+    finally:
+        _clear_ai_override()
+
+    calls = []
+    original = sessions_module._lock_attempt
+
+    def spy(db, attempt_id):
+        calls.append(attempt_id)
+        return original(db, attempt_id)
+
+    monkeypatch.setattr(sessions_module, "_lock_attempt", spy)
+
+    stub = _StubStreamingAIClient(["SCORE: 6\nFEEDBACK: ok\nSTRENGTHS:\n- (none)\nGAPS:\n- (none)\n"])
+    _override_ai_client(stub)
+    try:
+        response = client.post(
+            f"/sessions/{session_id}/answer/stream", json={"answer": "an answer"}, headers=headers
+        )
+    finally:
+        _clear_ai_override()
+
+    assert response.status_code == 200
+    assert len(calls) == 1
+
+
 def test_new_user_defaults_session_length_to_five(client, make_user):
     headers = make_user("sess-length-default@example.com")
     me = client.get("/auth/me", headers=headers)
@@ -704,3 +818,136 @@ def test_or_section_mode_finds_questions_generated_for_individual_sections(clien
         headers=headers,
     )
     assert resp_or.status_code == 201, "OR mode must accept when at least one section has questions"
+
+
+def test_lock_attempt_reflects_concurrent_commit_and_prevents_double_score(client, make_user):
+    """Simulates the answer double-submit race directly at the DB-session
+    level: two requests both read the attempt as unscored before either
+    writes - the TOCTOU window the unlocked `attempt.score is not None`
+    check can't close on its own. Proves that `_lock_attempt`
+    (SELECT ... FOR UPDATE + populate_existing), the mechanism used by
+    /sessions/{id}/answer and /answer/stream, sees the other transaction's
+    committed score instead of the stale None from the first read.
+    """
+    from app.routers.sessions import _lock_attempt
+
+    headers = make_user("race-lock@example.com")
+    section_id = _create_section_with_document(client, headers)
+    session_id = _start_session(client, headers, section_id, "quiz")
+
+    _override_ai_client(_StubAIClient(QUIZ_QUESTION_JSON))
+    try:
+        client.post(f"/sessions/{session_id}/next", headers=headers)
+    finally:
+        _clear_ai_override()
+
+    summary = client.get(f"/sessions/{session_id}", headers=headers).json()
+    attempt_id = summary["attempts"][0]["id"]
+
+    factory = app.dependency_overrides[get_session_factory]()
+    db_a = factory()
+    db_b = factory()
+    try:
+        attempt_a = db_a.get(Attempt, attempt_id)
+        attempt_b = db_b.get(Attempt, attempt_id)
+        assert attempt_a.score is None
+        assert attempt_b.score is None
+
+        # B "wins" the race and scores first.
+        locked_b = _lock_attempt(db_b, attempt_id)
+        assert locked_b.score is None
+        locked_b.score = 10
+        db_b.commit()
+
+        # A re-checks under the lock right before it would have written -
+        # it must see B's committed score, not the stale None from its
+        # first read.
+        locked_a = _lock_attempt(db_a, attempt_id)
+        assert locked_a.score == 10
+    finally:
+        db_a.close()
+        db_b.close()
+
+
+def test_next_question_route_requests_the_session_lock(client, make_user, monkeypatch):
+    """Regression guard for the fix in #3: proves the live `/sessions/{id}/next`
+    route itself calls `_get_owned_session(..., for_update=True)`, not just
+    that the helper works correctly when called directly with an explicit
+    True (which `test_next_question_lock_sees_concurrently_committed_attempt`
+    below verifies, but wouldn't catch a regression where the route stopped
+    requesting the lock).
+    """
+    import app.routers.sessions as sessions_module
+
+    headers = make_user("race-next-wiring@example.com")
+    section_id = _create_section_with_document(client, headers)
+    session_id = _start_session(client, headers, section_id, "quiz")
+
+    calls = []
+    original = sessions_module._get_owned_session
+
+    def spy(db, sid, uid, *, for_update=False):
+        calls.append(for_update)
+        return original(db, sid, uid, for_update=for_update)
+
+    monkeypatch.setattr(sessions_module, "_get_owned_session", spy)
+
+    _override_ai_client(_StubAIClient(QUIZ_QUESTION_JSON))
+    try:
+        response = client.post(f"/sessions/{session_id}/next", headers=headers)
+    finally:
+        _clear_ai_override()
+
+    assert response.status_code == 200
+    assert calls == [True]
+
+
+def test_next_question_lock_sees_concurrently_committed_attempt(client, make_user):
+    """Simulates the next-question double-attempt race directly at the DB-
+    session level: proves that after acquiring the session-row lock used by
+    /sessions/{id}/next, a fresh attempt count reflects an attempt another
+    transaction committed in between - the mechanism that prevents two
+    concurrent `next` calls from both inserting past target_question_count.
+    """
+    from sqlalchemy import func, select
+
+    from app.routers.sessions import _get_owned_session
+
+    headers = make_user("race-next@example.com")
+    section_id = _create_section_with_document(client, headers)
+    session_id = _start_session(client, headers, section_id, "quiz")
+    user_id = client.get("/auth/me", headers=headers).json()["id"]
+
+    factory = app.dependency_overrides[get_session_factory]()
+    db_a = factory()
+    db_b = factory()
+    try:
+        count_before = db_a.scalar(
+            select(func.count()).select_from(Attempt).where(Attempt.session_id == session_id)
+        )
+        assert count_before == 0
+
+        # B "wins" the race: locks the session row and inserts an attempt.
+        session_b = _get_owned_session(db_b, session_id, user_id, for_update=True)
+        db_b.add(
+            Attempt(
+                session_id=session_b.id,
+                question="Q",
+                category="technical",
+                format="quiz",
+                options=["a", "b"],
+                correct_index=0,
+            )
+        )
+        db_b.commit()
+
+        # A locks the same row afterwards and must see B's committed insert
+        # when it re-reads the count, instead of the stale count_before.
+        _get_owned_session(db_a, session_id, user_id, for_update=True)
+        count_after = db_a.scalar(
+            select(func.count()).select_from(Attempt).where(Attempt.session_id == session_id)
+        )
+        assert count_after == 1
+    finally:
+        db_a.close()
+        db_b.close()

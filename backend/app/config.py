@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     ai_rate_limit_max_requests: int = 30
     ai_rate_limit_window_seconds: int = 60
 
+    # Throttles /auth/login and /auth/register per client IP, to block
+    # credential-stuffing/brute-force and mass account creation.
+    auth_rate_limit_max_requests: int = 10
+    auth_rate_limit_window_seconds: int = 60
+
     # Comma-separated allowed origins for CORS (e.g. the GitHub Pages URL in
     # prod). Empty by default: same-origin setups (local dev proxy, or the
     # Nginx-proxied Docker deploy) never send a cross-origin request, so no

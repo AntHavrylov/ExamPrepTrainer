@@ -141,8 +141,10 @@ def _quiz_feedback(language: str, is_correct: bool, correct_option: str) -> str:
     return template.format(answer=correct_option)
 
 
-def _get_owned_session(db: DBSession, session_id: int, user_id: int) -> TrainingSession:
-    session = db.get(TrainingSession, session_id)
+def _get_owned_session(
+    db: DBSession, session_id: int, user_id: int, *, for_update: bool = False
+) -> TrainingSession:
+    session = db.get(TrainingSession, session_id, with_for_update=for_update)
     if session is None or session.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     return session
@@ -152,6 +154,17 @@ def _latest_attempt(db: DBSession, session_id: int) -> Attempt | None:
     return db.scalar(
         select(Attempt).where(Attempt.session_id == session_id).order_by(Attempt.id.desc())
     )
+
+
+def _lock_attempt(db: DBSession, attempt_id: int) -> Attempt | None:
+    """Locks the attempt row and refreshes it with the latest committed
+    state, closing the gap between an earlier unlocked `score is None` read
+    and this request's write. If a concurrent request already scored the
+    attempt while this one was validating input or waiting on the AI call,
+    the returned object reflects that scored state instead of stale None -
+    the caller must check `.score` before writing to it.
+    """
+    return db.get(Attempt, attempt_id, with_for_update=True, populate_existing=True)
 
 
 def _attempt_count(db: DBSession, session_id: int) -> int:
@@ -308,7 +321,12 @@ async def next_question(
     ai_client: AIProvider = Depends(get_ai_client),
     session_factory=Depends(get_session_factory),
 ) -> NextQuestionRead:
-    session = _get_owned_session(db, session_id, current_user.id)
+    # Locked for the rest of the request: two concurrent "next" calls for the
+    # same session (double-click, retried request) must not both pass the
+    # existing_count check below and both insert an Attempt. The second
+    # caller blocks here until the first commits, then re-reads a fresh
+    # existing_count that already reflects the first call's insert.
+    session = _get_owned_session(db, session_id, current_user.id, for_update=True)
     if session.finished_at is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Session has already been finished"
@@ -398,6 +416,15 @@ async def next_question(
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
         except AIClientError as exc:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
+        if not new_rows:
+            # Shouldn't happen: generate_questions/generate_quiz_questions
+            # already reject an empty AI response as an AIClientError. Kept
+            # as a hard guard so a future change upstream degrades to a
+            # clean 503 instead of an IndexError.
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="AI did not return any questions",
+            )
         db.add_all(new_rows)
         db.flush()
         matching = matching + new_rows
@@ -495,6 +522,14 @@ async def answer(
                 detail="selected_index out of range",
             )
 
+        # Re-check under a row lock right before writing: a concurrent
+        # request for this same attempt (duplicate tab, client retry) may
+        # have scored it since the unlocked check above.
+        locked = _lock_attempt(db, attempt.id)
+        if locked.score is not None:
+            return _attempt_to_result(locked)
+        attempt = locked
+
         attempt.selected_index = payload.selected_index
         is_correct = payload.selected_index == attempt.correct_index
         attempt.score = 10 if is_correct else 0
@@ -502,7 +537,7 @@ async def answer(
             current_user.language, is_correct, attempt.options[attempt.correct_index]
         )
         if is_correct and attempt.question_bank_id is not None:
-            qb = db.get(QuestionBank, attempt.question_bank_id)
+            qb = db.get(QuestionBank, attempt.question_bank_id, with_for_update=True)
             if qb is not None:
                 qb.correct_answer_count += 1
         db.commit()
@@ -531,6 +566,14 @@ async def answer(
     except AIClientError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
 
+    # Re-check under a row lock right before writing: the AI call above can
+    # take a while, and a concurrent request for this same attempt may have
+    # scored it in the meantime.
+    locked = _lock_attempt(db, attempt.id)
+    if locked.score is not None:
+        return _attempt_to_result(locked)
+    attempt = locked
+
     stored_feedback = evaluation["feedback"]
     if evaluation["strengths"]:
         stored_feedback += "\n\nStrengths: " + "; ".join(evaluation["strengths"])
@@ -541,7 +584,7 @@ async def answer(
     attempt.score = evaluation["score"]
     attempt.feedback = stored_feedback
     if evaluation["score"] >= 7 and attempt.question_bank_id is not None:
-        qb = db.get(QuestionBank, attempt.question_bank_id)
+        qb = db.get(QuestionBank, attempt.question_bank_id, with_for_update=True)
         if qb is not None:
             qb.correct_answer_count += 1
     db.commit()
@@ -630,28 +673,35 @@ async def answer_stream(
 
         stream_db = session_factory()
         try:
-            stored_attempt = stream_db.get(Attempt, attempt_id)
-            stored_feedback = evaluation["feedback"]
-            if evaluation["strengths"]:
-                stored_feedback += "\n\nStrengths: " + "; ".join(evaluation["strengths"])
-            if evaluation["gaps"]:
-                stored_feedback += "\nGaps: " + "; ".join(evaluation["gaps"])
+            # Locked re-check: the streaming AI call above can take a while,
+            # and a concurrent request for this same attempt (e.g. the
+            # non-streaming /answer endpoint, or a duplicate stream request)
+            # may have scored it in the meantime.
+            stored_attempt = _lock_attempt(stream_db, attempt_id)
+            if stored_attempt.score is not None:
+                db_result = _attempt_to_result(stored_attempt)
+            else:
+                stored_feedback = evaluation["feedback"]
+                if evaluation["strengths"]:
+                    stored_feedback += "\n\nStrengths: " + "; ".join(evaluation["strengths"])
+                if evaluation["gaps"]:
+                    stored_feedback += "\nGaps: " + "; ".join(evaluation["gaps"])
 
-            stored_attempt.answer = answer_text
-            stored_attempt.score = evaluation["score"]
-            stored_attempt.feedback = stored_feedback
-            if evaluation["score"] >= 7 and stored_attempt.question_bank_id is not None:
-                qb = stream_db.get(QuestionBank, stored_attempt.question_bank_id)
-                if qb is not None:
-                    qb.correct_answer_count += 1
-            stream_db.commit()
-            stream_db.refresh(stored_attempt)
-            db_result = _attempt_to_result(
-                stored_attempt,
-                strengths=evaluation["strengths"],
-                gaps=evaluation["gaps"],
-                feedback=evaluation["feedback"],
-            )
+                stored_attempt.answer = answer_text
+                stored_attempt.score = evaluation["score"]
+                stored_attempt.feedback = stored_feedback
+                if evaluation["score"] >= 7 and stored_attempt.question_bank_id is not None:
+                    qb = stream_db.get(QuestionBank, stored_attempt.question_bank_id, with_for_update=True)
+                    if qb is not None:
+                        qb.correct_answer_count += 1
+                stream_db.commit()
+                stream_db.refresh(stored_attempt)
+                db_result = _attempt_to_result(
+                    stored_attempt,
+                    strengths=evaluation["strengths"],
+                    gaps=evaluation["gaps"],
+                    feedback=evaluation["feedback"],
+                )
         finally:
             stream_db.close()
 
